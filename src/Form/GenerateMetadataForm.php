@@ -41,8 +41,8 @@ class GenerateMetadataForm extends FormBase
 	 * {@inheritdoc}
 	 */
 	public function validateForm(array &$form, FormStateInterface $form_state) {}
-	
-	
+
+
 	/**
 	 * {@inheritdoc}
 	 */

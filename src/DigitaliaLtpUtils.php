@@ -3,9 +3,15 @@
 namespace Drupal\digitalia_ltp_adapter;
 
 use Drupal\node\Entity\Node;
+use Drupal\node\Entity\NodeType;
+use Drupal\taxonomy\Entity\Term;
 use Drupal\media\Entity\Media;
 use Drupal\file\Entity\File;
 use Drupal\Core\File\FileSystemInterface;
+use Drupal\Core\Language\LanguageManagerInterface;
+use Drupal\Core\Language\LanguageManager;
+use Drupal\Core\Language\LanguageDefault;
+use Drupal\Core\Language\LanguageInterface;
 
 class DigitaliaLtpUtils
 {
@@ -22,7 +28,8 @@ class DigitaliaLtpUtils
 		$this->file_repository = \Drupal::service('file.repository');
 		$this->entity_manager = \Drupal::entityTypeManager();
 		$this->METADATA_PATH = "metadata/metadata.json";
-		$this->DIRECTORY = "public://digitalia_ltp_metadata_only";
+		$this->DIRECTORY = "public://digitalia_ltp";
+		//$this->DIRECTORY = "public://digitalia_ltp_metadata";
 
 	}
 
@@ -36,7 +43,7 @@ class DigitaliaLtpUtils
 		$current_path = "objects";
 
 
-		$dir_metadata = $this->DIRECTORY . "/metadata"; 
+		$dir_metadata = $this->DIRECTORY . "/metadata";
 		$dir_objects = $this->DIRECTORY . "/objects";
 
 		$this->filesystem->prepareDirectory($dir_metadata, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
@@ -68,20 +75,21 @@ class DigitaliaLtpUtils
 	 *
 	 * @param String $current_path
 	 *   Tracks the path
-	 * 
+	 *
 	 * @param Array $to_encode
 	 *   For appending metadata
 	 */
 	private function harvestMetadata($node, String $current_path, Array &$to_encode)
 	{
+		//$node = \Drupal::service('entity.repository')->getTranslationFromContext($node);
+		dpm(\Drupal::languageManager()->getLanguages());
+
+		$languages = \Drupal::languageManager()->getLanguages();
+
 		$current_path = $current_path . "/" . $node->getTitle();
 		$dir_path = $this->DIRECTORY . "/". $current_path;
 		$filesystem = $this->filesystem->prepareDirectory($dir_path, FileSystemInterface::CREATE_DIRECTORY |
 											       FileSystemInterface::MODIFY_PERMISSIONS);
-		$filename = $current_path . "/dummy.txt";
-		$this->file_repository->writeData("", $this->DIRECTORY . '/' . $filename, FileSystemInterface::EXISTS_REPLACE);
-		//$metadata = array('filename' => $filename, 'id' => $node->id(), 'title' => $node->getTitle());
-		$metadata = array('filename' => $filename);
 		$children = $this->entity_manager->getStorage('node')->loadByProperties(['field_member_of' => $node->id()]);
 		$media = $this->entity_manager->getStorage('media')->loadByProperties(['field_media_of' => $node->id()]);
 		foreach($children as $child) {
@@ -89,34 +97,46 @@ class DigitaliaLtpUtils
 		}
 
 		foreach($media as $medium) {
-			//dpm("Harvesting media");
 			$this->harvestMedia($medium, $current_path, $to_encode);
 		}
 
-		dpm($metadata);
-		foreach ($node->getFields(false) as $name => $field) {
-			$type = $node->get($name)->getFieldDefinition()->getType();
-			//dpm($type);
 
-			if ($type == 'entity_reference') {
-				dpm("REFERENCE FOUND");
-				foreach($node->get($name)->referencedEntities() as $object) {
-					dpm($object->label());
+		foreach ($languages as $lang => $_value) {
+			$node_translated = \Drupal::service('entity.repository')->getTranslationFromContext($node, $lang);
+			$filename = $current_path . "/" . $lang . ".txt";
+			$this->file_repository->writeData("", $this->DIRECTORY . '/' . $filename, FileSystemInterface::EXISTS_REPLACE);
+			$metadata = array('filename' => $filename, 'export_language' => $lang);
+
+			foreach ($node_translated->getFields(false) as $name => $_value) {
+				$type = $node_translated->get($name)->getFieldDefinition()->getType();
+
+				$field_array = $node_translated->get($name)->getValue();
+				$values = array();
+				$values_label = array();
+				if ($type == 'entity_reference') {
+					foreach($node_translated->get($name)->referencedEntities() as $object) {
+						$translated = \Drupal::service('entity.repository')->getTranslationFromContext($object, $lang);
+
+						array_push($values, $translated->id());
+						array_push($values_label, $translated->label());
+					}
+
+					// TODO: figure out entity type label translation
+					if ($name != 'type') {
+						$metadata[$name . "_label"] = $values_label;
+					}
+				} else {
+					foreach($field_array as $field) {
+						array_push($values, $field['value']);
+					}
 				}
+
+				$metadata[$name] = $values;
+
 			}
-			$metadata[$name] = $field->getString();
-			//if ($name == "field_object_type_basic") {
-			//	//dpm(\Drupal\taxonomy\Entity\Term::load($field->getString())->getName());
-			//	dpm($node->get($name)->referencedEntities());
-			//}
-			//if ($name == "uid") {
-			//	//dpm(\Drupal\taxonomy\Entity\Term::load($field->getString())->getName());
-			//	dpm($node->get($name)->referencedEntities());
-			//}
 
+			array_push($to_encode, $metadata);
 		}
-
-		array_push($to_encode, $metadata);
 	}
 
 	private function harvestMedia($medium, String $current_path, Array &$to_encode)
