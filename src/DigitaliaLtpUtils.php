@@ -18,6 +18,7 @@ class DigitaliaLtpUtils
 	private $filesystem;
 	private $file_repository;
 	private $entity_manager;
+	private $languages;
 
 	private $DIRECTORY;
 	private $METADATA_PATH;
@@ -28,6 +29,7 @@ class DigitaliaLtpUtils
 		$this->file_repository = \Drupal::service('file.repository');
 		$this->entity_manager = \Drupal::entityTypeManager();
 		$this->METADATA_PATH = "metadata/metadata.json";
+		$this->languages = \Drupal::languageManager()->getLanguages();
 		$this->DIRECTORY = "public://digitalia_ltp";
 		//$this->DIRECTORY = "public://digitalia_ltp_metadata";
 
@@ -36,9 +38,7 @@ class DigitaliaLtpUtils
 	public function prepareData($node)
 	{
 		dpm("Preparing data...");
-		$fields = $node->getFields();
 		$title = $node->getTitle();
-		$filename = 'object/' . $title;
 		$to_encode = array();
 		$current_path = "objects";
 
@@ -68,10 +68,10 @@ class DigitaliaLtpUtils
 	}
 
 	/**
-	 * Appends metadata of all descendants of a node
+	 * Appends metadata of all descendants of a entity
 	 *
 	 * @param object $node
-	 *   A core drupal node object
+	 *   A drupal entity
 	 *
 	 * @param String $current_path
 	 *   Tracks the path
@@ -81,10 +81,7 @@ class DigitaliaLtpUtils
 	 */
 	private function harvestMetadata($node, String $current_path, Array &$to_encode)
 	{
-		//$node = \Drupal::service('entity.repository')->getTranslationFromContext($node);
-		dpm(\Drupal::languageManager()->getLanguages());
-
-		$languages = \Drupal::languageManager()->getLanguages();
+		dpm("Entity type id: " . $node->getEntityTypeId());
 
 		$current_path = $current_path . "/" . $node->getTitle();
 		$dir_path = $this->DIRECTORY . "/". $current_path;
@@ -92,6 +89,10 @@ class DigitaliaLtpUtils
 											       FileSystemInterface::MODIFY_PERMISSIONS);
 		$children = $this->entity_manager->getStorage('node')->loadByProperties(['field_member_of' => $node->id()]);
 		$media = $this->entity_manager->getStorage('media')->loadByProperties(['field_media_of' => $node->id()]);
+
+
+		$this->entityExtractMetadata($node, $current_path, $to_encode);
+
 		foreach($children as $child) {
 			$this->harvestMetadata($child, $current_path, $to_encode);
 		}
@@ -99,29 +100,37 @@ class DigitaliaLtpUtils
 		foreach($media as $medium) {
 			$this->harvestMedia($medium, $current_path, $to_encode);
 		}
+	}
 
+	private function entityExtractMetadata($entity, String $current_path, Array &$to_encode, String $filename = null)
+	{
+		foreach ($this->languages as $lang => $_value) {
+			$entity_translated = \Drupal::service('entity.repository')->getTranslationFromContext($entity, $lang);
 
-		foreach ($languages as $lang => $_value) {
-			$node_translated = \Drupal::service('entity.repository')->getTranslationFromContext($node, $lang);
-			$filename = $current_path . "/" . $lang . ".txt";
-			$this->file_repository->writeData("", $this->DIRECTORY . '/' . $filename, FileSystemInterface::EXISTS_REPLACE);
-			$metadata = array('filename' => $filename, 'export_language' => $lang);
+			if (!$filename) {
+				$filepath = $current_path . "/" . $lang . ".txt";
+				$this->file_repository->writeData("", $this->DIRECTORY . '/' . $filepath, FileSystemInterface::EXISTS_REPLACE);
+			} else {
+				$filepath = $current_path . "/" . $filename;
+			}
 
-			foreach ($node_translated->getFields(false) as $name => $_value) {
-				$type = $node_translated->get($name)->getFieldDefinition()->getType();
+			$metadata = array('filename' => $filepath, 'export_language' => $lang);
 
-				$field_array = $node_translated->get($name)->getValue();
+			foreach ($entity_translated->getFields(false) as $name => $_value) {
+				$type = $entity_translated->get($name)->getFieldDefinition()->getType();
+
+				$field_array = $entity_translated->get($name)->getValue();
 				$values = array();
 				$values_label = array();
 				if ($type == 'entity_reference') {
-					foreach($node_translated->get($name)->referencedEntities() as $object) {
+					foreach($entity_translated->get($name)->referencedEntities() as $object) {
 						$translated = \Drupal::service('entity.repository')->getTranslationFromContext($object, $lang);
 
 						array_push($values, $translated->id());
 						array_push($values_label, $translated->label());
 					}
 
-					// TODO: figure out entity type label translation
+					// TODO: figure out content type label translation
 					if ($name != 'type') {
 						$metadata[$name . "_label"] = $values_label;
 					}
@@ -137,6 +146,7 @@ class DigitaliaLtpUtils
 
 			array_push($to_encode, $metadata);
 		}
+
 	}
 
 	private function harvestMedia($medium, String $current_path, Array &$to_encode)
@@ -146,6 +156,8 @@ class DigitaliaLtpUtils
 		$file_url = $file->createFileUrl();
 		$file_uri = $file->getFileUri();
 		$this->filesystem->copy($file_uri, $this->DIRECTORY . "/". $current_path . '/' . $file->getFilename(), FileSystemInterface::EXISTS_REPLACE);
+
+		$this->entityExtractMetadata($medium, $current_path, $to_encode, $file->getFilename());
 	}
 
 }
