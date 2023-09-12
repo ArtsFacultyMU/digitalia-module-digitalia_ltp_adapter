@@ -28,11 +28,18 @@ class GenerateMetadataForm extends FormBase
 	 */
 	public function buildForm(array $form, FormStateInterface $form_state)
 	{
-		$form['actions']['#type'] = 'actions';
-		$form['actions']['submit'] = [
+		//$form['actions']['#type'] = 'actions';
+		$form['submit'] = [
 			'#type' => 'submit',
 			'#value' => $this->t('Generate metadata bundle'),
-			'#button_type' => 'primary',
+			'#name' => 'main'
+		];
+
+		$form['other'] = [
+			'#type' => 'submit',
+			'#value' => $this->t('Start transfer'),
+			'#name' => 'other',
+			'#submit' => [ [$this, 'submitOtherForm'] ]
 		];
 		return $form;
 	}
@@ -52,14 +59,17 @@ class GenerateMetadataForm extends FormBase
 		$node = \Drupal::routeMatch()->getParameter('node');
 
 		$utils = new DigitaliaLtpUtils();
-		$utils->prepareData($node);
-
+		$utils->archiveData($node);
 
 	}
 
-
-
-
-
-
+	/**
+	 * {@inheritdoc}
+	 */
+	public function submitOtherForm(array &$form, FormStateInterface $form_state)
+	{
+		dpm("Other Form!");
+		$utils = new DigitaliaLtpUtils();
+		$utils->startIngest();
+	}
 }
