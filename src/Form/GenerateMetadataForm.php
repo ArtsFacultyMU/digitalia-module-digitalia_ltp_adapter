@@ -9,10 +9,11 @@ use Drupal\media\Entity\Media;
 use Drupal\file\Entity\File;
 use Drupal\Core\File\FileSystemInterface;
 use Drupal\digitalia_ltp_adapter\DigitaliaLtpUtils;
+use Drupal\digitalia_ltp_adapter\ExportMode;
 
 class GenerateMetadataForm extends FormBase
 {
-	const DIRECTORY = "public://digitalia_ltp";
+	private $directories;
 
 	/**
 	 * {@inheritdoc}
@@ -28,19 +29,31 @@ class GenerateMetadataForm extends FormBase
 	 */
 	public function buildForm(array $form, FormStateInterface $form_state)
 	{
-		//$form['actions']['#type'] = 'actions';
+
+		//$form['other'] = [
+		//	'#type' => 'submit',
+		//	'#value' => $this->t('Start transfer'),
+		//	'#name' => 'other',
+		//	'#submit' => [ [$this, 'submitOtherForm'] ]
+		//];
+
+		$form['export'] = [
+			'#type' => 'select',
+			'#title' => $this->t('Select export type'),
+			'#options' => ["separate", "tree", "flat", "single"],
+		];
+
+		$form['ingest'] = [
+			'#type' => 'checkbox',
+			'#title' => $this->t('Start archivematica ingest'),
+		];
+
 		$form['submit'] = [
 			'#type' => 'submit',
 			'#value' => $this->t('Generate metadata bundle'),
 			'#name' => 'main'
 		];
 
-		$form['other'] = [
-			'#type' => 'submit',
-			'#value' => $this->t('Start transfer'),
-			'#name' => 'other',
-			'#submit' => [ [$this, 'submitOtherForm'] ]
-		];
 		return $form;
 	}
 
@@ -59,7 +72,38 @@ class GenerateMetadataForm extends FormBase
 		$node = \Drupal::routeMatch()->getParameter('node');
 
 		$utils = new DigitaliaLtpUtils();
-		$utils->archiveData($node);
+
+		$key = $form_state->getValue('export');
+		$value = $form['export']['#options'][$key];
+		dpm("Key: " . $key);
+		dpm("Value: " . $value);
+
+		switch($value) {
+		case 'tree':
+			$export_type = $utils::Tree;
+			break;
+		case 'separate':
+			$export_type = $utils::Separate;
+			break;
+		case 'flat':
+			$export_type = $utils::Flat;
+			break;
+		case 'single':
+			$export_type = $utils::Single;
+			break;
+		default:
+			$export_type = $utils::Flat;
+		}
+
+		dpm("export_type: " . $export_type);
+
+		$this->directories = $utils->archiveData($node, $export_type);
+		dpm("Directories:");
+		dpm($this->directories);
+
+		if ($form_state->getValue('ingest')) {
+			$utils->startIngest($this->directories);
+		}
 
 	}
 
@@ -70,6 +114,7 @@ class GenerateMetadataForm extends FormBase
 	{
 		dpm("Other Form!");
 		$utils = new DigitaliaLtpUtils();
-		$utils->startIngest();
+		dpm($this->directories);
+		//$utils->startIngest($this->directories);
 	}
 }
