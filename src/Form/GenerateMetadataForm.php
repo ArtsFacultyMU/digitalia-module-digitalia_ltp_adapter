@@ -30,13 +30,6 @@ class GenerateMetadataForm extends FormBase
 	public function buildForm(array $form, FormStateInterface $form_state)
 	{
 
-		//$form['other'] = [
-		//	'#type' => 'submit',
-		//	'#value' => $this->t('Start transfer'),
-		//	'#name' => 'other',
-		//	'#submit' => [ [$this, 'submitOtherForm'] ]
-		//];
-
 		$form['export'] = [
 			'#type' => 'select',
 			'#title' => $this->t('Select export type'),
@@ -52,6 +45,13 @@ class GenerateMetadataForm extends FormBase
 			'#type' => 'submit',
 			'#value' => $this->t('Generate metadata bundle'),
 			'#name' => 'main'
+		];
+
+		$form['other'] = [
+			'#type' => 'submit',
+			'#value' => $this->t('Config test'),
+			'#name' => 'other',
+			'#submit' => [ [$this, 'submitOtherForm'] ]
 		];
 
 		return $form;
@@ -113,8 +113,11 @@ class GenerateMetadataForm extends FormBase
 	public function submitOtherForm(array &$form, FormStateInterface $form_state)
 	{
 		dpm("Other Form!");
-		$utils = new DigitaliaLtpUtils();
-		dpm($this->directories);
-		//$utils->startIngest($this->directories);
+		$config = \Drupal::config('digitalia_ltp_adapter.admin_settings');
+		dpm("test_field: " . $config->get('test_field'));
+		dpm("am_host: " . $config->get('am_host'));
+		dpm("api_key_username: " . $config->get('api_key_username'));
+		dpm("api_key_password: " . $config->get('api_key_password'));
+		dpm("base_url: " . $config->get('base_url'));
 	}
 }

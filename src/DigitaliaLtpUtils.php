@@ -20,10 +20,9 @@ class DigitaliaLtpUtils
 	private $file_repository;
 	private $entity_manager;
 	private $languages;
+	private $config;
 
-	private $BASE_URL;
 	private $METADATA_PATH;
-	private $REST_CREDENTIALS;
 
 	const Flat = 0;
 	const Tree = 1;
@@ -37,10 +36,9 @@ class DigitaliaLtpUtils
 		$this->entity_manager = \Drupal::entityTypeManager();
 		$this->languages = \Drupal::languageManager()->getLanguages();
 		$this->directories = array();
+		$this->config = \Drupal::config('digitalia_ltp_adapter.admin_settings');
 		// TODO: change to constants
-		$this->REST_CREDENTIALS = "test:test";
 		$this->METADATA_PATH = "metadata/metadata.json";
-		$this->BASE_URL = "public://archivematica/archivematica/";
 
 	}
 
@@ -50,9 +48,7 @@ class DigitaliaLtpUtils
 	 */
 	public function archiveData($node, $export_mode)
 	{
-		dpm("Preparing data...");
 		$this->archiveSourceNode($node, $export_mode, $node->getTitle());
-		dpm("Data prepared!");
 
 		return $this->directories;
 	}
@@ -65,7 +61,7 @@ class DigitaliaLtpUtils
 		array_push($this->directories, $directory);
 
 
-		$dir_url = $this->BASE_URL . "/" . $directory;
+		$dir_url = $this->config->get('base_url') . "/" . $directory;
 		$dir_metadata = $dir_url . "/metadata";
 		$dir_objects = $dir_url . "/objects";
 
@@ -136,7 +132,7 @@ class DigitaliaLtpUtils
 		$media = $this->entity_manager->getStorage('media')->loadByProperties(['field_media_of' => $node->id()]);
 
 
-		$this->entityExtractMetadata($node, $current_path, $to_encode, $dir_url, null);
+		$this->entityExtractMetadata($node, $current_path, $to_encode, $dir_url, "");
 
 
 		foreach($media as $medium) {
@@ -250,7 +246,10 @@ class DigitaliaLtpUtils
 	{
 		dpm("Sending request...");
 
-		$am_host = "dirk.localnet:62080";
+		// TODO: deal with trailing slash in host URL
+		$am_host = $this->config->get('am_host');
+		$username = $this->config->get('api_key_username');
+		$password = $this->config->get('api_key_password');
 
 		$client = \Drupal::httpClient();
 
@@ -263,7 +262,7 @@ class DigitaliaLtpUtils
 
 			$ingest_params = array('path' => base64_encode($path), 'name' => $transfer_name, 'processing_config' => 'automated', 'type' => 'standard');
 			try {
-				$response = $client->request('POST', 'http://' . $am_host . '/api/v2beta/package', ['headers' => ['Authorization' => 'ApiKey ' . $this->REST_CREDENTIALS, 'ContentType' => 'application/json'], 'body' => json_encode($ingest_params)]);
+				$response = $client->request('POST', $am_host . '/api/v2beta/package', ['headers' => ['Authorization' => 'ApiKey ' . $username . ":" . $password, 'ContentType' => 'application/json'], 'body' => json_encode($ingest_params)]);
 				dpm(json_decode($response->getBody()->getContents(), TRUE));
 			} catch (\Exception $e) {
 				dpm($e->getMessage());

@@ -1,0 +1,19 @@
+digitalia_ltp_adapter.admin_settings:
+  type: config_object
+  label: 'Digitalia LTP Adapter config'
+  mapping:
+    test_field:
+      type: text
+      label: 'Test field'
+    am_host:
+      type: string
+      label: 'Archivematica host URL'
+    api_key_username:
+      type: string
+      label: 'Archivematica username'
+    api_key_password:
+      type: string
+      label: 'Archivematica password'
+    base_url:
+      type: string
+      label: 'URL of directory shared with Archivematica'

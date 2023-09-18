@@ -3,6 +3,7 @@ description: "Provides connection to LTP server"
 package: digitalia
 type: module
 core_version_requirement: ^9
+configure: digitalia_ltp_adapter.admin_sesttings
 dependencies:
   - drupal:islandora
   - drupal:block

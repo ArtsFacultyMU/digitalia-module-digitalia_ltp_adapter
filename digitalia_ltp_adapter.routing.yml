@@ -1,0 +1,7 @@
+digitalia_ltp_adapter.admin_settings:
+  path: '/admin/config/system/digitalia_ltp_adapter'
+  defaults:
+    _form: '\Drupal\digitalia_ltp_adapter\Form\ModuleConfigurationForm'
+    _title: 'Digitalia LTP Adapter settings'
+  requirements:
+    _permission: 'administer site configuration'
