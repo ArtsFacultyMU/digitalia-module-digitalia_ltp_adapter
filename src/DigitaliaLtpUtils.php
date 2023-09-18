@@ -44,7 +44,7 @@ class DigitaliaLtpUtils
 
 	/**
 	 * @return array
-	 *   Array of directories prepared for ingest
+	 *   Array of object directories prepared for ingest
 	 */
 	public function archiveData($node, $export_mode)
 	{
@@ -53,6 +53,18 @@ class DigitaliaLtpUtils
 		return $this->directories;
 	}
 
+	/**
+	 * Prepares necessary directories, starts metadata harvest and writes metadata
+	 *
+	 * @param $node
+	 *   Node which is to be ingested into archivematica
+	 *
+	 * @param $export_mode
+	 *   Sets the object export mode
+	 *
+	 * @param String $directory
+	 *   Name of base object directory
+	 */
 	private function archiveSourceNode($node, $export_mode, String $directory)
 	{
 		dpm("Preparing data...");
@@ -91,8 +103,8 @@ class DigitaliaLtpUtils
 	/**
 	 * Starts ingest in archivematica
 	 *
-	 * @param #$directories
-	 *   Directories to be ingested
+	 * @param $directories
+	 *   Object directories to be ingested
 	 */
 	public function startIngest(array $directories)
 	{
@@ -112,13 +124,16 @@ class DigitaliaLtpUtils
 	 *   A drupal entity
 	 *
 	 * @param String $base_path
-	 *   Base path of objects
+	 *   Base path of objects from $dir_url
 	 *
 	 * @param Array $to_encode
 	 *   For appending metadata
 	 *
 	 * @param $export_mode
 	 *   Determines export mode
+	 * 
+	 * @param String $dir_url
+	 *   URL of object directory, which is ingested to Archivematica
 	 */
 	private function harvestMetadata($node, String $base_path, Array &$to_encode, $export_mode, String $dir_url)
 	{
@@ -161,6 +176,24 @@ class DigitaliaLtpUtils
 
 	}
 
+	/**
+	 * Extracts metadata from single entity
+	 *
+	 * @param $entity
+	 *   Entity from which metadata is extracted
+	 *
+	 * @param String $current_path
+	 *   Path of entity
+	 *
+	 * @param Array $to_encode
+	 *   Array with metadata
+	 *
+	 * @param String $dir_url
+	 *   URL of object directory, which is ingested to Archivematica
+	 *
+	 * @param String $filename
+	 *   Entity filename, empty when not a file
+	 */
 	private function entityExtractMetadata($entity, String $current_path, Array &$to_encode, String $dir_url, String $filename)
 	{
 		foreach ($this->languages as $lang => $_value) {
