@@ -48,7 +48,7 @@ class DigitaliaLtpUtils
 	 */
 	public function archiveData($node, $export_mode)
 	{
-		$this->archiveSourceNode($node, $export_mode, $node->getTitle());
+		$this->archiveSourceNode($node, $export_mode, $node->id());
 
 		return $this->directories;
 	}
@@ -72,6 +72,11 @@ class DigitaliaLtpUtils
 		$current_path = "objects";
 		array_push($this->directories, $directory);
 
+
+		if ($this->config->get('base_url') == "") {
+			dpm("Base URL not set! Aborting.");
+			return;
+		}
 
 		$dir_url = $this->config->get('base_url') . "/" . $directory;
 		$dir_metadata = $dir_url . "/metadata";
@@ -139,7 +144,7 @@ class DigitaliaLtpUtils
 	{
 		dpm("Entity type id: " . $node->getEntityTypeId());
 
-		$current_path = $base_path. "/" . $node->getTitle();
+		$current_path = $base_path. "/" . $node->id();
 		$dir_path = $dir_url . "/". $current_path;
 		$filesystem = $this->filesystem->prepareDirectory($dir_path, FileSystemInterface::CREATE_DIRECTORY |
 											       FileSystemInterface::MODIFY_PERMISSIONS);

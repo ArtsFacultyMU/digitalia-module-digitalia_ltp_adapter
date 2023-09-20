@@ -1,5 +1,5 @@
-name: LTP connector
-description: "Provides connection to LTP server"
+name: LTP adapter
+description: "Enables export of content to Archivematica"
 package: digitalia
 type: module
 core_version_requirement: ^9

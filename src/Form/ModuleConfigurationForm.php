@@ -79,12 +79,11 @@ class ModuleConfigurationForm extends ConfigFormBase
 	 */
 	public function submitForm(array &$form, FormStateInterface $form_state)
 	{
-		$this->config('digitalia_ltp_adapter.admin_settings')->set('test_field', $form_state->getValue('test_field'));
-		$this->config('digitalia_ltp_adapter.admin_settings')->set('am_host', $form_state->getValue('am_host'));
-		$this->config('digitalia_ltp_adapter.admin_settings')->set('api_key_username', $form_state->getValue('api_key_username'));
-		$this->config('digitalia_ltp_adapter.admin_settings')->set('api_key_password', $form_state->getValue('api_key_password'));
-		$this->config('digitalia_ltp_adapter.admin_settings')->set('base_url', $form_state->getValue('base_url'));
-		$this->config('digitalia_ltp_adapter.admin_settings')->save();
+		$this->config('digitalia_ltp_adapter.admin_settings')->set('test_field', $form_state->getValue('test_field'))->save();
+		$this->config('digitalia_ltp_adapter.admin_settings')->set('am_host', $form_state->getValue('am_host'))->save();
+		$this->config('digitalia_ltp_adapter.admin_settings')->set('api_key_username', $form_state->getValue('api_key_username'))->save();
+		$this->config('digitalia_ltp_adapter.admin_settings')->set('api_key_password', $form_state->getValue('api_key_password'))->save();
+		$this->config('digitalia_ltp_adapter.admin_settings')->set('base_url', $form_state->getValue('base_url'))->save();
 
 		parent::submitForm($form, $form_state);
 	}
