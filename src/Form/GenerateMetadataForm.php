@@ -36,9 +36,19 @@ class GenerateMetadataForm extends FormBase
 			'#options' => ["separate", "tree", "flat", "single"],
 		];
 
-		$form['ingest'] = [
+		$form['ingest_toggle'] = [
 			'#type' => 'checkbox',
 			'#title' => $this->t('Start archivematica ingest'),
+		];
+
+		$form['media_toggle'] = [
+			'#type' => 'checkbox',
+			'#title' => $this->t('Include media'),
+		];
+
+		$form['language_toggle'] = [
+			'#type' => 'checkbox',
+			'#title' => $this->t('Single language only'),
 		];
 
 		$form['submit'] = [
@@ -71,7 +81,13 @@ class GenerateMetadataForm extends FormBase
 		dpm("Form submitted!");
 		$node = \Drupal::routeMatch()->getParameter('node');
 
-		$utils = new DigitaliaLtpUtils();
+		$debug_settings = array(
+			'media_toggle' => $form_state->getValue('media_toggle'),
+			'ingest_toggle' => $form_state->getValue('ingest_toggle'),
+			'language_toggle' => $form_state->getValue('language_toggle'),
+		);
+
+		$utils = new DigitaliaLtpUtils($debug_settings);
 
 		$key = $form_state->getValue('export');
 		$value = $form['export']['#options'][$key];
@@ -97,13 +113,13 @@ class GenerateMetadataForm extends FormBase
 
 		dpm("export_type: " . $export_type);
 
+
 		$this->directories = $utils->archiveData($node, $export_type);
 		dpm("Directories:");
 		dpm($this->directories);
 
-		if ($form_state->getValue('ingest')) {
-			$utils->startIngest($this->directories);
-		}
+
+		$utils->startIngest($this->directories);
 
 	}
 

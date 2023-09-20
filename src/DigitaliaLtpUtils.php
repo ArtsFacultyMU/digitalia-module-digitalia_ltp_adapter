@@ -21,6 +21,7 @@ class DigitaliaLtpUtils
 	private $entity_manager;
 	private $languages;
 	private $config;
+	private $debug_settings;
 
 	private $METADATA_PATH;
 
@@ -29,7 +30,7 @@ class DigitaliaLtpUtils
 	const Single = 2;
 	const Separate = 3;
 
-	public function __construct()
+	public function __construct(array $debug_settings = null)
 	{
 		$this->filesystem = \Drupal::service('file_system');
 		$this->file_repository = \Drupal::service('file.repository');
@@ -37,6 +38,7 @@ class DigitaliaLtpUtils
 		$this->languages = \Drupal::languageManager()->getLanguages();
 		$this->directories = array();
 		$this->config = \Drupal::config('digitalia_ltp_adapter.admin_settings');
+		$this->debug_settings = $debug_settings;
 		// TODO: change to constants
 		$this->METADATA_PATH = "metadata/metadata.json";
 
@@ -155,10 +157,10 @@ class DigitaliaLtpUtils
 		$this->entityExtractMetadata($node, $current_path, $to_encode, $dir_url, "");
 
 
-		foreach($media as $medium) {
-			//dpm($current_path);
-			//dpm($dir_url);
-			$this->harvestMedia($medium, $current_path, $to_encode, $dir_url);
+		if ($this->debug_settings['media_toggle']) {
+			foreach($media as $medium) {
+				$this->harvestMedia($medium, $current_path, $to_encode, $dir_url);
+			}
 		}
 
 		if ($export_mode == $this::Flat) {
@@ -223,6 +225,10 @@ class DigitaliaLtpUtils
 					foreach($entity_translated->get($name)->referencedEntities() as $object) {
 						$translated = \Drupal::service('entity.repository')->getTranslationFromContext($object, $lang);
 
+						if ($translated->getEntityTypeId() == 'node') {
+							dpm("Node referenced!");
+						}
+
 						array_push($values, $translated->id());
 						array_push($values_label, $translated->label());
 					}
@@ -242,6 +248,9 @@ class DigitaliaLtpUtils
 			}
 
 			array_push($to_encode, $metadata);
+			if ($this->debug_settings['language_toggle']) {
+				break;
+			}
 		}
 
 	}
@@ -282,6 +291,10 @@ class DigitaliaLtpUtils
 	 */
 	private function startTransfer(Array $directories)
 	{
+		if (!$this->debug_settings['ingest_toggle']) {
+			return;
+		}
+
 		dpm("Sending request...");
 
 		// TODO: deal with trailing slash in host URL
