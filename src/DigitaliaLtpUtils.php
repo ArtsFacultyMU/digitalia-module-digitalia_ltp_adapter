@@ -21,6 +21,7 @@ class DigitaliaLtpUtils
 	private $entity_manager;
 	private $languages;
 	private $config;
+	private $content_types_fields;
 	private $debug_settings;
 
 	private $METADATA_PATH;
@@ -30,7 +31,7 @@ class DigitaliaLtpUtils
 	const Single = 2;
 	const Separate = 3;
 
-	public function __construct(array $debug_settings = null)
+	public function __construct(array $debug_settings = array())
 	{
 		$this->filesystem = \Drupal::service('file_system');
 		$this->file_repository = \Drupal::service('file.repository');
@@ -39,9 +40,35 @@ class DigitaliaLtpUtils
 		$this->directories = array();
 		$this->config = \Drupal::config('digitalia_ltp_adapter.admin_settings');
 		$this->debug_settings = $debug_settings;
+		$this->content_types_fields = $this->parseFieldConfiguration();
 		// TODO: change to constants
 		$this->METADATA_PATH = "metadata/metadata.json";
 
+	}
+
+	/**
+	 * Parses content type/field configuration
+	 *
+	 * @return array
+	 *   Array with parsed configuration
+	 */
+	private function parseFieldConfiguration()
+	{
+		$field_config = $this->config->get('field_configuration');
+		$lines = explode("\n", $field_config);
+
+		$parsed= array();
+		foreach($lines as $line) {
+			$split = explode("::", $line);
+			$parsed[$split[0]][$split[1]] = $split[2];
+		}
+
+		return $parsed;
+	}
+
+	public function printFieldConfig()
+	{
+		dpm($this->content_types_fields);
 	}
 
 	/**
@@ -94,7 +121,7 @@ class DigitaliaLtpUtils
 		$encoded = json_encode($to_encode, JSON_UNESCAPED_SLASHES);
 
 
-		dpm($encoded);
+		dpm(json_encode($to_encode, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
 
 		$this->file_repository->writeData($encoded, $dir_url . "/" . $this->METADATA_PATH, FileSystemInterface::EXISTS_REPLACE);
 

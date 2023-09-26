@@ -57,11 +57,18 @@ class GenerateMetadataForm extends FormBase
 			'#name' => 'main'
 		];
 
-		$form['other'] = [
+		$form['other_0'] = [
 			'#type' => 'submit',
 			'#value' => $this->t('Config test'),
-			'#name' => 'other',
-			'#submit' => [ [$this, 'submitOtherForm'] ]
+			'#name' => 'other0',
+			'#submit' => [ [$this, 'submitOtherForm0'] ]
+		];
+
+		$form['other_1'] = [
+			'#type' => 'submit',
+			'#value' => $this->t('Field config'),
+			'#name' => 'other1',
+			'#submit' => [ [$this, 'submitOtherForm1'] ]
 		];
 
 		return $form;
@@ -123,10 +130,7 @@ class GenerateMetadataForm extends FormBase
 
 	}
 
-	/**
-	 * {@inheritdoc}
-	 */
-	public function submitOtherForm(array &$form, FormStateInterface $form_state)
+	public function submitOtherForm0(array &$form, FormStateInterface $form_state)
 	{
 		dpm("Other Form!");
 		$config = \Drupal::config('digitalia_ltp_adapter.admin_settings');
@@ -135,5 +139,13 @@ class GenerateMetadataForm extends FormBase
 		dpm("api_key_username: " . $config->get('api_key_username'));
 		dpm("api_key_password: " . $config->get('api_key_password'));
 		dpm("base_url: " . $config->get('base_url'));
+		dpm("site_name: " . $config->get('site_name'));
+		dpm("field_configuration:<br>" . $config->get('field_configuration'));
+	}
+
+	public function submitOtherForm1(array &$form, FormStateInterface $form_state)
+	{
+		$utils = new DigitaliaLtpUtils();
+		$utils->printFieldConfig();
 	}
 }

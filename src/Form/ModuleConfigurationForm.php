@@ -36,11 +36,6 @@ class ModuleConfigurationForm extends ConfigFormBase
 	public function buildForm(array $form, FormStateInterface $form_state)
 	{
 		$config = $this->config('digitalia_ltp_adapter.admin_settings');
-		$form['test_field'] = [
-			'#type' => 'textfield',
-			'#title' => 'Test config field',
-			'#default_value' => $config->get('test_field'),
-		];
 
 		$form['am_host'] = [
 			'#type' => 'textfield',
@@ -58,6 +53,7 @@ class ModuleConfigurationForm extends ConfigFormBase
 		$form['api_key_password'] = [
 			'#type' => 'password',
 			'#title' => 'Archivematica password',
+			'#description' => '<strong>Must be reentered on every save!</strong>',
 			'#default_value' => $config->get('api_key_password'),
 		];
 
@@ -67,6 +63,22 @@ class ModuleConfigurationForm extends ConfigFormBase
 			'#description' => 'Please omit trailing slash, e.g. public://archivematica',
 			'#default_value' => $config->get('base_url'),
 		];
+
+		$form['site_name'] = [
+			'#type' => 'textfield',
+			'#title' => 'Site name',
+			'#description' => 'Used as prefix for object ingest. Node with id \'42\' and site name \'my-islandora\' will be ingested to Archivematica as \'my-islandora_42\'',
+			'#default_value' => $config->get('site_name'),
+		];
+
+		$form['field_configuration'] = [
+			'#type' => 'textarea',
+			'#size' => '60',
+			'#title' => 'List of content types and fields for export',
+			'#description' => 'Use tokens for values: \'content_type::metadata_name{[node:token]|[node:token]}\', e.g. \'basic_page::dcterms.title{[node:title]}\' or \'basic_page::title{[node:title]}\'',
+			'#default_value' => $config->get('field_configuration'),
+		];
+
 
 
 		return parent::buildForm($form, $form_state);
@@ -84,6 +96,8 @@ class ModuleConfigurationForm extends ConfigFormBase
 		$this->config('digitalia_ltp_adapter.admin_settings')->set('api_key_username', $form_state->getValue('api_key_username'))->save();
 		$this->config('digitalia_ltp_adapter.admin_settings')->set('api_key_password', $form_state->getValue('api_key_password'))->save();
 		$this->config('digitalia_ltp_adapter.admin_settings')->set('base_url', $form_state->getValue('base_url'))->save();
+		$this->config('digitalia_ltp_adapter.admin_settings')->set('site_name', $form_state->getValue('site_name'))->save();
+		$this->config('digitalia_ltp_adapter.admin_settings')->set('field_configuration', $form_state->getValue('field_configuration'))->save();
 
 		parent::submitForm($form, $form_state);
 	}
