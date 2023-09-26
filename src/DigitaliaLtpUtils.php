@@ -77,7 +77,7 @@ class DigitaliaLtpUtils
 	 */
 	public function archiveData($node, $export_mode)
 	{
-		$this->archiveSourceNode($node, $export_mode, $node->id());
+		$this->archiveSourceNode($node, $export_mode, $this->config->get('site_name') . "_" . $node->id());
 
 		return $this->directories;
 	}
@@ -242,37 +242,56 @@ class DigitaliaLtpUtils
 
 			$metadata = array('filename' => $filepath, 'export_language' => $lang);
 
-			foreach ($entity_translated->getFields(false) as $name => $_value) {
-				$type = $entity_translated->get($name)->getFieldDefinition()->getType();
+			$entity_bundle = $entity_translated->bundle();
 
-				$field_array = $entity_translated->get($name)->getValue();
-				$values = array();
-				$values_label = array();
-				if ($type == 'entity_reference') {
-					foreach($entity_translated->get($name)->referencedEntities() as $object) {
-						$translated = \Drupal::service('entity.repository')->getTranslationFromContext($object, $lang);
+			// TODO: deal with repeated fields
+			// TODO: deal with multiple tokens for single field
+			$token_service = \Drupal::token();
+			$data = array(
+				$entity_translated->getEntityTypeId() => $entity_translated,
+			);
+			$settings = array(
+				'langcode' => $lang,
+				'clear' => true,
+			);
 
-						if ($translated->getEntityTypeId() == 'node') {
-							dpm("Node referenced!");
-						}
-
-						array_push($values, $translated->id());
-						array_push($values_label, $translated->label());
-					}
-
-					// TODO: figure out content type label translation
-					if ($name != 'type') {
-						$metadata[$name . "_label"] = $values_label;
-					}
-				} else {
-					foreach($field_array as $field) {
-						array_push($values, $field['value']);
-					}
-				}
-
-				$metadata[$name] = $values;
-
+			foreach ($this->content_types_fields[$entity_bundle] as $name => $value) {
+				dpm($token_service->replacePlain($value, $data, $settings));
+				$metadata[$name] = $token_service->replacePlain($value, $data, $settings);
 			}
+
+
+			//foreach ($entity_translated->getFields(false) as $name => $_value) {
+			//	$type = $entity_translated->get($name)->getFieldDefinition()->getType();
+
+			//	$field_array = $entity_translated->get($name)->getValue();
+			//	$values = array();
+			//	$values_label = array();
+			//	if ($type == 'entity_reference') {
+			//		foreach($entity_translated->get($name)->referencedEntities() as $object) {
+			//			$translated = \Drupal::service('entity.repository')->getTranslationFromContext($object, $lang);
+
+			//			if ($translated->getEntityTypeId() == 'node') {
+			//				dpm("Node referenced!");
+			//			}
+
+			//			array_push($values, $translated->id());
+			//			array_push($values_label, $translated->label());
+			//		}
+
+			//		// TODO: figure out content type label translation
+			//		if ($name != 'type') {
+			//			$metadata[$name . "_label"] = $values_label;
+			//		}
+			//	} else {
+			//		foreach($field_array as $field) {
+			//			array_push($values, $field['value']);
+			//		}
+			//	}
+
+			//	$metadata[$name] = $values;
+
+			//}
 
 			array_push($to_encode, $metadata);
 			if ($this->debug_settings['language_toggle']) {
@@ -305,6 +324,7 @@ class DigitaliaLtpUtils
 		$file_uri = $file->getFileUri();
 		$this->filesystem->copy($file_uri, $dir_url . "/". $current_path . '/' . $file->getFilename(), FileSystemInterface::EXISTS_REPLACE);
 		//\Drupal::logger('digitalia_ltp_adapter')->debug();
+		dpm($medium->bundle());
 
 		$this->entityExtractMetadata($medium, $current_path, $to_encode, $dir_url, $file->getFilename());
 	}

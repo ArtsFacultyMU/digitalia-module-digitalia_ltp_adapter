@@ -75,7 +75,7 @@ class ModuleConfigurationForm extends ConfigFormBase
 			'#type' => 'textarea',
 			'#size' => '60',
 			'#title' => 'List of content types and fields for export',
-			'#description' => 'Use tokens for values: \'content_type::metadata_name{[node:token]|[node:token]}\', e.g. \'basic_page::dcterms.title{[node:title]}\' or \'basic_page::title{[node:title]}\'',
+			'#description' => 'Use tokens for values: \'content_type::metadata_name::[node:token]\', e.g. \'page::dcterms.title::[node:title]\' or \'page::title::[node:title]\'',
 			'#default_value' => $config->get('field_configuration'),
 		];
 
