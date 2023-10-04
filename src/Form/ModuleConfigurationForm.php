@@ -79,6 +79,13 @@ class ModuleConfigurationForm extends ConfigFormBase
 			'#default_value' => $config->get('field_configuration'),
 		];
 
+		$form['auto_generate_switch'] = [
+			'#type' => 'checkbox',
+			'#title' => 'Export on save',
+			'#description' => 'When enabled, exports only when the entity is published (with media when media AND parent is published)',
+			'#default_value' => $config->get('auto_generate_switch'),
+		];
+
 
 
 		return parent::buildForm($form, $form_state);
@@ -98,6 +105,7 @@ class ModuleConfigurationForm extends ConfigFormBase
 		$this->config('digitalia_ltp_adapter.admin_settings')->set('base_url', $form_state->getValue('base_url'))->save();
 		$this->config('digitalia_ltp_adapter.admin_settings')->set('site_name', $form_state->getValue('site_name'))->save();
 		$this->config('digitalia_ltp_adapter.admin_settings')->set('field_configuration', $form_state->getValue('field_configuration'))->save();
+		$this->config('digitalia_ltp_adapter.admin_settings')->set('auto_generate_switch', $form_state->getValue('auto_generate_switch'))->save();
 
 		parent::submitForm($form, $form_state);
 	}

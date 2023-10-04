@@ -66,17 +66,44 @@ class DigitaliaLtpUtils
 		return $parsed;
 	}
 
+
+	/**
+	 * Gets list of all content types which are to be archived
+	 *
+	 * @return array
+	 *   Array of content types
+	 */
+	public function getEnabledContentTypes()
+	{
+		$content_types = array();
+		foreach ($this->content_types_fields as $type => $_value) {
+			$content_types[$type] = 1;
+		}
+
+		return $content_types;
+	}
+
+	public function getConfig()
+	{
+		return $this->config;
+	}
+
+
+
 	public function printFieldConfig()
 	{
 		dpm($this->content_types_fields);
 	}
 
 	/**
+	 * Entrypoint for archiving
+	 *
 	 * @return array
 	 *   Array of object directories prepared for ingest
 	 */
 	public function archiveData($node, $export_mode)
 	{
+		// Using id(), get('title') can contain '/' and other nasty characters
 		$this->archiveSourceNode($node, $export_mode, $this->config->get('site_name') . "_" . $node->id());
 
 		return $this->directories;
@@ -125,10 +152,6 @@ class DigitaliaLtpUtils
 
 		$this->file_repository->writeData($encoded, $dir_url . "/" . $this->METADATA_PATH, FileSystemInterface::EXISTS_REPLACE);
 
-		//dpm(transliterator_transliterate('Any-Latin;Latin-ASCII;', $title));
-		//foreach ($fields as $name => $field) {
-		//	dpm("$name:" . $field->getString());
-		//}
 		dpm("Data prepared!");
 
 
@@ -165,7 +188,7 @@ class DigitaliaLtpUtils
 	 *
 	 * @param $export_mode
 	 *   Determines export mode
-	 * 
+	 *
 	 * @param String $dir_url
 	 *   URL of object directory, which is ingested to Archivematica
 	 */
@@ -173,6 +196,7 @@ class DigitaliaLtpUtils
 	{
 		dpm("Entity type id: " . $node->getEntityTypeId());
 
+		// Using id(), get('title') can contain '/' and other nasty characters
 		$current_path = $base_path. "/" . $node->id();
 		$dir_path = $dir_url . "/". $current_path;
 		$filesystem = $this->filesystem->prepareDirectory($dir_path, FileSystemInterface::CREATE_DIRECTORY |
@@ -250,6 +274,7 @@ class DigitaliaLtpUtils
 			$data = array(
 				$entity_translated->getEntityTypeId() => $entity_translated,
 			);
+
 			$settings = array(
 				'langcode' => $lang,
 				'clear' => true,
@@ -259,39 +284,6 @@ class DigitaliaLtpUtils
 				dpm($token_service->replacePlain($value, $data, $settings));
 				$metadata[$name] = $token_service->replacePlain($value, $data, $settings);
 			}
-
-
-			//foreach ($entity_translated->getFields(false) as $name => $_value) {
-			//	$type = $entity_translated->get($name)->getFieldDefinition()->getType();
-
-			//	$field_array = $entity_translated->get($name)->getValue();
-			//	$values = array();
-			//	$values_label = array();
-			//	if ($type == 'entity_reference') {
-			//		foreach($entity_translated->get($name)->referencedEntities() as $object) {
-			//			$translated = \Drupal::service('entity.repository')->getTranslationFromContext($object, $lang);
-
-			//			if ($translated->getEntityTypeId() == 'node') {
-			//				dpm("Node referenced!");
-			//			}
-
-			//			array_push($values, $translated->id());
-			//			array_push($values_label, $translated->label());
-			//		}
-
-			//		// TODO: figure out content type label translation
-			//		if ($name != 'type') {
-			//			$metadata[$name . "_label"] = $values_label;
-			//		}
-			//	} else {
-			//		foreach($field_array as $field) {
-			//			array_push($values, $field['value']);
-			//		}
-			//	}
-
-			//	$metadata[$name] = $values;
-
-			//}
 
 			array_push($to_encode, $metadata);
 			if ($this->debug_settings['language_toggle']) {
