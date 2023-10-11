@@ -96,15 +96,54 @@ class DigitaliaLtpUtils
 	}
 
 	/**
+	 * Creates filename/directory friendly uid for entities
+	 *
+	 * @param $entity
+	 *   Entity for which to generate uid
+	 *
+	 * @return
+	 *   String uid
+	 */
+	private function getEntityUID($entity)
+	{
+		switch ($entity->getEntityTypeId()) {
+		case "node":
+			dpm("node type");
+			$prefix = "nid";
+			break;
+		case "media":
+			dpm("media type");
+			$prefix = "mid";
+			break;
+		case "taxonomy_term":
+			dpm("taxonomy_term type");
+			$prefix = "tid";
+			break;
+		default:
+			dpm("default type");
+			$prefix = "default";
+			break;
+		}
+
+		return $prefix . "_" . $entity->id();
+
+	}
+
+	/**
 	 * Entrypoint for archiving
 	 *
 	 * @return array
 	 *   Array of object directories prepared for ingest
 	 */
-	public function archiveData($node, $export_mode)
+	public function archiveData($entity, $export_mode)
 	{
 		// Using id(), get('title') can contain '/' and other nasty characters
-		$this->archiveSourceNode($node, $export_mode, $this->config->get('site_name') . "_" . $node->id());
+		if (!$entity) {
+			return $this->directories;
+		}
+
+		$type = $entity->getEntityTypeId();
+		$this->archiveSourceEntity($entity, $export_mode, $this->config->get('site_name') . "_" . $this->getEntityUID($entity));
 
 		return $this->directories;
 	}
@@ -112,8 +151,8 @@ class DigitaliaLtpUtils
 	/**
 	 * Prepares necessary directories, starts metadata harvest and writes metadata
 	 *
-	 * @param $node
-	 *   Node which is to be ingested into archivematica
+	 * @param $entity
+	 *   Entity which is to be ingested into archivematica
 	 *
 	 * @param $export_mode
 	 *   Sets the object export mode
@@ -121,7 +160,7 @@ class DigitaliaLtpUtils
 	 * @param String $directory
 	 *   Name of base object directory
 	 */
-	private function archiveSourceNode($node, $export_mode, String $directory)
+	private function archiveSourceEntity($entity, $export_mode, String $directory)
 	{
 		dpm("Preparing data...");
 		$to_encode = array();
@@ -143,7 +182,7 @@ class DigitaliaLtpUtils
 
 
 
-		$this->harvestMetadata($node, $current_path, $to_encode, $export_mode, $dir_url);
+		$this->harvestMetadata($entity, $current_path, $to_encode, $export_mode, $dir_url);
 
 		$encoded = json_encode($to_encode, JSON_UNESCAPED_SLASHES);
 
@@ -177,7 +216,7 @@ class DigitaliaLtpUtils
 	/**
 	 * Appends metadata of all descendants of a entity
 	 *
-	 * @param object $node
+	 * @param object $entity
 	 *   A drupal entity
 	 *
 	 * @param String $base_path
@@ -192,43 +231,38 @@ class DigitaliaLtpUtils
 	 * @param String $dir_url
 	 *   URL of object directory, which is ingested to Archivematica
 	 */
-	private function harvestMetadata($node, String $base_path, Array &$to_encode, $export_mode, String $dir_url)
+	private function harvestMetadata($entity, String $base_path, Array &$to_encode, $export_mode, String $dir_url)
 	{
-		dpm("Entity type id: " . $node->getEntityTypeId());
+		dpm("Entity type id: " . $entity->getEntityTypeId());
+		$type = $entity->getEntityTypeId();
 
-		// Using id(), get('title') can contain '/' and other nasty characters
-		$current_path = $base_path. "/" . $node->id();
+		$current_path = $base_path. "/" . $this->getEntityUID($entity);
 		$dir_path = $dir_url . "/". $current_path;
 		$filesystem = $this->filesystem->prepareDirectory($dir_path, FileSystemInterface::CREATE_DIRECTORY |
 											       FileSystemInterface::MODIFY_PERMISSIONS);
-		$children = $this->entity_manager->getStorage('node')->loadByProperties(['field_member_of' => $node->id()]);
-		$media = $this->entity_manager->getStorage('media')->loadByProperties(['field_media_of' => $node->id()]);
 
-
-		$this->entityExtractMetadata($node, $current_path, $to_encode, $dir_url, "");
-
-
-		if ($this->debug_settings['media_toggle']) {
-			foreach($media as $medium) {
-				$this->harvestMedia($medium, $current_path, $to_encode, $dir_url);
-			}
+		if ($type == "node") {
+			$children = $this->entity_manager->getStorage('node')->loadByProperties(['field_member_of' => $entity->id()]);
+			$media = $this->entity_manager->getStorage('media')->loadByProperties(['field_media_of' => $entity->id()]);
+			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "");
 		}
 
-		if ($export_mode == $this::Flat) {
-			foreach($children as $child) {
-				$this->harvestMetadata($child, $base_path, $to_encode, $export_mode, $dir_url);
-			}
+		if ($type == "media") {
+			$this->harvestMedia($entity, $current_path, $to_encode, $dir_url);
 		}
 
-		if ($export_mode == $this::Tree) {
-			foreach($children as $child) {
-				$this->harvestMetadata($child, $current_path, $to_encode, $export_mode, $dir_url);
-			}
+		if ($type == "taxonomy_term") {
+			dpm("taxonomy_term type harvesting");
 		}
+
 
 		if ($export_mode == $this::Separate) {
 			foreach($children as $child) {
 				$this->archiveData($child, $export_mode);
+			}
+
+			foreach($media as $medium) {
+				$this->archiveData($medium, $export_mode);
 			}
 		}
 
@@ -331,6 +365,7 @@ class DigitaliaLtpUtils
 	private function startTransfer(Array $directories)
 	{
 		if (!$this->debug_settings['ingest_toggle']) {
+			dpm("Ingest disabled");
 			return;
 		}
 

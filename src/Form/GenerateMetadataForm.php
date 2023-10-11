@@ -87,6 +87,24 @@ class GenerateMetadataForm extends FormBase
 	{
 		dpm("Form submitted!");
 		$node = \Drupal::routeMatch()->getParameter('node');
+		$media = \Drupal::routeMatch()->getParameter('media');
+		$taxonomy_term = \Drupal::routeMatch()->getParameter('taxonomy_term');
+
+		$entity = null;
+
+		if ($node) {
+			$entity = $node;
+		}
+
+		if ($media) {
+			$entity = $media;
+		}
+
+		if ($taxonomy_term) {
+			$entity = $taxonomy_term;
+		}
+
+		//dpm(\Drupal::routeMatch()->getParameters());
 
 		$debug_settings = array(
 			'media_toggle' => $form_state->getValue('media_toggle'),
@@ -121,7 +139,7 @@ class GenerateMetadataForm extends FormBase
 		dpm("export_type: " . $export_type);
 
 
-		$this->directories = $utils->archiveData($node, $export_type);
+		$this->directories = $utils->archiveData($entity, $export_type);
 		dpm("Directories:");
 		dpm($this->directories);
 
