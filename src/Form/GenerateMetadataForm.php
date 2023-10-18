@@ -71,6 +71,13 @@ class GenerateMetadataForm extends FormBase
 			'#submit' => [ [$this, 'submitOtherForm1'] ]
 		];
 
+		$form['other_2'] = [
+			'#type' => 'submit',
+			'#value' => $this->t('Cleanup'),
+			'#name' => 'other2',
+			'#submit' => [ [$this, 'submitOtherForm2'] ]
+		];
+
 		return $form;
 	}
 
@@ -165,5 +172,29 @@ class GenerateMetadataForm extends FormBase
 	{
 		$utils = new DigitaliaLtpUtils();
 		$utils->printFieldConfig();
+	}
+
+	public function submitOtherForm2(array &$form, FormStateInterface $form_state)
+	{
+		$utils = new DigitaliaLtpUtils();
+		$node = \Drupal::routeMatch()->getParameter('node');
+		$media = \Drupal::routeMatch()->getParameter('media');
+		$taxonomy_term = \Drupal::routeMatch()->getParameter('taxonomy_term');
+
+		$entity = null;
+
+		if ($node) {
+			$entity = $node;
+		}
+
+		if ($media) {
+			$entity = $media;
+		}
+
+		if ($taxonomy_term) {
+			$entity = $taxonomy_term;
+		}
+
+		$utils->preExportCleanup($entity);
 	}
 }

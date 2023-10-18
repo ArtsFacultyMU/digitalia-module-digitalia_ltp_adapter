@@ -11,14 +11,9 @@ use Drupal\node\Entity\Node;
 function digitalia_ltp_adapter_entity_presave(EntityInterface $entity)
 {
 	dpm("Entity presave hook");
+	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity presave hook");
 
-	$debug_settings = array(
-		'media_toggle' => true,
-		'ingest_toggle' => true,
-		'language_toggle' => false,
-	);
-
-	$utils = new DigitaliaLtpUtils($debug_settings);
+	$utils = new DigitaliaLtpUtils();
 
 	if (!$utils->getConfig()->get('auto_generate_switch')) {
 		return;
@@ -27,22 +22,21 @@ function digitalia_ltp_adapter_entity_presave(EntityInterface $entity)
 
 	if ($utils->getEnabledContentTypes()[$entity->bundle()]) {
 
-		// TODO: deal with languages
-		$export_entity = $entity;
-		if ($entity->getEntityTypeId() == "media") {
-			// TODO: deal with multiple media and only single updated
-			$parent_id = $entity->get("field_media_of")->first()->getValue()["target_id"];
-			// is media always child of node?
-			$export_entity = \Drupal::entityTypeManager()->getStorage('node')->load($parent_id);
-		}
-
-		if (!$entity->get("status")->first()->getValue()['value'] || !$export_entity->get("status")->first()->getValue()['value']) {
+		if (!$entity->get("status")->first()->getValue()['value']) {
 			dpm("Entity IS NOT published");
+			\Drupal::logger('digitalia_ltp_adapter')->debug("Entity '" . $entity->getTitle() . "'is not published");
 			return;
 		}
 
 
-		$directories = $utils->archiveData($export_entity, $utils::Separate);
-		$utils->startIngest($directories);
+		$utils->archiveData($entity, $utils::Single);
 	}
+}
+
+/**
+ * implements hook_entity_predelete()
+ */
+function digitalia_ltp_adapter_entity_predelete(EntityInterface $entity)
+{
+	dpm("Entity predelete hook");
 }

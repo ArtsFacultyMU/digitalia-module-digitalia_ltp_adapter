@@ -7,6 +7,7 @@ use Drupal\node\Entity\NodeType;
 use Drupal\media\Entity\Media;
 use Drupal\file\Entity\File;
 use Drupal\Core\File\FileSystemInterface;
+use Drupal\Core\File\FileSystem;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 
@@ -31,7 +32,7 @@ class DigitaliaLtpUtils
 	const Single = 2;
 	const Separate = 3;
 
-	public function __construct(array $debug_settings = array())
+	public function __construct(array $debug_settings = null)
 	{
 		$this->filesystem = \Drupal::service('file_system');
 		$this->file_repository = \Drupal::service('file.repository');
@@ -39,8 +40,17 @@ class DigitaliaLtpUtils
 		$this->languages = \Drupal::languageManager()->getLanguages();
 		$this->directories = array();
 		$this->config = \Drupal::config('digitalia_ltp_adapter.admin_settings');
-		$this->debug_settings = $debug_settings;
 		$this->content_types_fields = $this->parseFieldConfiguration();
+
+		$this->debug_settings = $debug_settings;
+		if ($debug_settings == null) {
+			$this->debug_settings = array(
+				'media_toggle' => true,
+				'ingest_toggle' => true,
+				'language_toggle' => false,
+			);
+		}
+
 		// TODO: change to constants
 		$this->METADATA_PATH = "metadata/metadata.json";
 
@@ -88,6 +98,12 @@ class DigitaliaLtpUtils
 		return $this->config;
 	}
 
+	public function getFullEntityUID($entity)
+	{
+		return $this->config->get('site_name') . _ . $this->getEntityUID($entity);
+
+	}
+
 
 
 	public function printFieldConfig()
@@ -108,25 +124,29 @@ class DigitaliaLtpUtils
 	{
 		switch ($entity->getEntityTypeId()) {
 		case "node":
-			dpm("node type");
 			$prefix = "nid";
 			break;
 		case "media":
-			dpm("media type");
 			$prefix = "mid";
 			break;
 		case "taxonomy_term":
-			dpm("taxonomy_term type");
 			$prefix = "tid";
 			break;
 		default:
-			dpm("default type");
 			$prefix = "default";
 			break;
 		}
 
 		return $prefix . "_" . $entity->id();
 
+	}
+
+	public function addToQueue(String $directory)
+	{
+		$queue = \Drupal::service('queue')->get('digitalia_ltp_adapter_export_queue');
+		$item = new \stdClass();
+		$item->directory = $directory;
+		$queue->createItem($item);
 	}
 
 	/**
@@ -173,6 +193,9 @@ class DigitaliaLtpUtils
 			return;
 		}
 
+
+		$this->preExportCleanup($entity);
+
 		$dir_url = $this->config->get('base_url') . "/" . $directory;
 		$dir_metadata = $dir_url . "/metadata";
 		$dir_objects = $dir_url . "/objects";
@@ -191,6 +214,8 @@ class DigitaliaLtpUtils
 
 		$this->file_repository->writeData($encoded, $dir_url . "/" . $this->METADATA_PATH, FileSystemInterface::EXISTS_REPLACE);
 
+		$this->addToQueue($directory);
+
 		dpm("Data prepared!");
 
 
@@ -205,11 +230,13 @@ class DigitaliaLtpUtils
 	public function startIngest(array $directories)
 	{
 		dpm("Starting archivation process...");
+		\Drupal::logger('digitalia_ltp_adapter')->debug("Starting archivation process...");
 
 		$this->startTransfer($directories);
 
 
 		dpm("Archivation proces started!");
+		\Drupal::logger('digitalia_ltp_adapter')->debug("Archivation proces started!");
 	}
 
 
@@ -366,6 +393,7 @@ class DigitaliaLtpUtils
 	{
 		if (!$this->debug_settings['ingest_toggle']) {
 			dpm("Ingest disabled");
+			\Drupal::logger('digitalia_ltp_adapter')->debug("Ingest disabled");
 			return;
 		}
 
@@ -383,8 +411,6 @@ class DigitaliaLtpUtils
 			$path = "/archivematica/" . $directory;
 			$transfer_name = transliterator_transliterate('Any-Latin;Latin-ASCII;', $directory);
 
-
-
 			$ingest_params = array('path' => base64_encode($path), 'name' => $transfer_name, 'processing_config' => 'automated', 'type' => 'standard');
 			try {
 				$response = $client->request('POST', $am_host . '/api/v2beta/package', ['headers' => ['Authorization' => 'ApiKey ' . $username . ":" . $password, 'ContentType' => 'application/json'], 'body' => json_encode($ingest_params)]);
@@ -394,6 +420,21 @@ class DigitaliaLtpUtils
 				return false;
 			}
 		}
+	}
+
+
+	/**
+	 * Removes all generated files from previous exports
+	 *
+	 * @param $entity
+	 *   Entity to be exported
+	 */
+	public function preExportCleanup($entity)
+	{
+		$filename = $this->getFullEntityUID($entity);
+		$filepath = $this->config->get('base_url') . "/" . $filename;
+
+		$this->filesystem->deleteRecursive($filepath);
 	}
 
 }

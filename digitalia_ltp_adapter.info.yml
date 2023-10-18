@@ -7,3 +7,4 @@ configure: digitalia_ltp_adapter.admin_sesttings
 dependencies:
   - drupal:islandora
   - drupal:block
+  - drupal:queue_ui
