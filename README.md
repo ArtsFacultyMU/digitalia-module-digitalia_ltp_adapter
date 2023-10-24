@@ -1,106 +1,59 @@
 # Digitalia LTP adapter
 
+## TODO list
+- Add 'deleted' flag to objects deletd in Islandora
+- Solve possible race conditions when processing queue items and saving Isladora objects
+
+## Operation overview
+1. User in Islandora saves an object
+2. The object is exported into a directory shared between Islandora and Archivematica
+3. Object is added to queue to be ingested into Archivematica
+4. When cron is run, all objects in queue are ingested into Archivematica
+
 ## Terminology
 
 ```
-public://archivematica/archivematica/Růžový lampas s krajkovou bordurou obepnutou exotickou květenou/objects/Růžový lampas s krajkovou bordurou obepnutou exotickou květenou/001_2020_06_29.jpg
+public://archivematica/archivematica/local-devel-tkaniny_mid_3/objects/mid_3/003_2020_06_29.jpg
 ```
 - Base directory URL is `public://archivematica/archivematica`
-- Base object directory is `Růžový lampas s krajkovou bordurou obepnutou exotickou květenou` (the first one)
-- URL of object directory is `public://archivematica/archivematica/Růžový lampas s krajkovou bordurou obepnutou exotickou květenou`
-- Base path is `objects/Růžový lampas s krajkovou bordurou obepnutou exotickou květenou`
-- Filename is `001_2020_06_29.jpg`
+- Base object directory is `local-devel-tkaniny_mid_3`
+- URL of object directory is `public://archivematica/archivematica/local-devel-tkaniny_mid_3`
+- Base path is `objects/mid_3`
+- Filename is `003_2020_06_29.jpg`
 
 
 
 ## Export modes
 ### Separate
+This mode can be chosen using provided block
 ```
 .
-├── Růžový lampas s krajkovou bordurou obepnutou exotickou květenou
+├── local-devel-tkaniny_nid_229
 │   ├── metadata
 │   │   └── metadata.json
 │   └── objects
-│       └── Růžový lampas s krajkovou bordurou obepnutou exotickou květenou
-│           ├── 001_2020_06_29.jpg
-│           ├── 001_2020_06_29.png
-│           ├── 001_2020_06_29.psd
-│           ├── 001_2020_06_29.tif
+│       └── nid_229
 │           ├── cs.txt
 │           └── en.txt
-└── Zelený damašek s exotickým keřem a dvojicí stříbrných bordur
+└── local-devel-tkaniny_nid_231
     ├── metadata
     │   └── metadata.json
     └── objects
-        └── Zelený damašek s exotickým keřem a dvojicí stříbrných bordur
-            ├── 003_2020_06_29.jpg
-            ├── 003_2020_06_29.png
-            ├── 003_2020_06_29.psd
-            ├── 003_2020_06_29.tif
+        └── nid_231
             ├── cs.txt
             └── en.txt
  ```
 
 
-### Tree
-```
-.
-└── Růžový lampas s krajkovou bordurou obepnutou exotickou květenou
-    ├── metadata
-    │   └── metadata.json
-    └── objects
-        └── Růžový lampas s krajkovou bordurou obepnutou exotickou květenou
-            ├── 001_2020_06_29.jpg
-            ├── 001_2020_06_29.png
-            ├── 001_2020_06_29.psd
-            ├── 001_2020_06_29.tif
-            ├── Zelený damašek s exotickým keřem a dvojicí stříbrných bordur
-            │   ├── 003_2020_06_29.jpg
-            │   ├── 003_2020_06_29.png
-            │   ├── 003_2020_06_29.psd
-            │   ├── 003_2020_06_29.tif
-            │   ├── cs.txt
-            │   └── en.txt
-            ├── cs.txt
-            └── en.txt
-```
-
-
-### Flat
-```
-.
-└── Růžový lampas s krajkovou bordurou obepnutou exotickou květenou
-    ├── metadata
-    │   └── metadata.json
-    └── objects
-        ├── Růžový lampas s krajkovou bordurou obepnutou exotickou květenou
-        │   ├── 001_2020_06_29.jpg
-        │   ├── 001_2020_06_29.png
-        │   ├── 001_2020_06_29.psd
-        │   ├── 001_2020_06_29.tif
-        │   ├── cs.txt
-        │   └── en.txt
-        └── Zelený damašek s exotickým keřem a dvojicí stříbrných bordur
-            ├── 003_2020_06_29.jpg
-            ├── 003_2020_06_29.png
-            ├── 003_2020_06_29.psd
-            ├── 003_2020_06_29.tif
-            ├── cs.txt
-            └── en.txt
-```
-
 ### Single
+Default mode when saving/deleting object
 ```
 .
-└── Růžový lampas s krajkovou bordurou obepnutou exotickou květenou
+└── local-devel-tkaniny_nid_229
     ├── metadata
     │   └── metadata.json
     └── objects
-        └── Růžový lampas s krajkovou bordurou obepnutou exotickou květenou
-            ├── 001_2020_06_29.jpg
-            ├── 001_2020_06_29.png
-            ├── 001_2020_06_29.psd
-            ├── 001_2020_06_29.tif
+        └── nid_229
             ├── cs.txt
             └── en.txt
  ```
