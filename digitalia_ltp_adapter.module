@@ -12,6 +12,7 @@ function digitalia_ltp_adapter_entity_presave(EntityInterface $entity)
 {
 	dpm("Entity presave hook");
 	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity presave hook");
+	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
 
 	$utils = new DigitaliaLtpUtils();
 
@@ -22,14 +23,19 @@ function digitalia_ltp_adapter_entity_presave(EntityInterface $entity)
 
 	if ($utils->getEnabledContentTypes()[$entity->bundle()]) {
 
-		if (!$entity->get("status")->first()->getValue()['value']) {
-			dpm("Entity IS NOT published");
-			\Drupal::logger('digitalia_ltp_adapter')->debug("Entity '" . $entity->getTitle() . "'is not published");
-			return;
+		$status = $entity->get("status");
+		$published = false;
+
+		// Untranslated entities store bool, translated entities are more complex
+		if (is_bool($status)) {
+			$published = $status;
+		} else {
+			$published = $status->getValue()[0]['value'];
 		}
 
-
-		$utils->archiveData($entity, $utils::Single);
+		if ($published) {
+			$utils->archiveData($entity, $utils::Single);
+		}
 	}
 }
 

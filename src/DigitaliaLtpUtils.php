@@ -132,6 +132,9 @@ class DigitaliaLtpUtils
 		case "taxonomy_term":
 			$prefix = "tid";
 			break;
+		case "taxonomy_vocabulary":
+			$prefix = "vid";
+			break;
 		default:
 			$prefix = "default";
 			break;
@@ -280,6 +283,12 @@ class DigitaliaLtpUtils
 
 		if ($type == "taxonomy_term") {
 			dpm("taxonomy_term type harvesting");
+			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "");
+		}
+
+		if ($type == "taxonomy_vocabulary") {
+			dpm("taxonomy_vocabulary type harvesting");
+			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "");
 		}
 
 
