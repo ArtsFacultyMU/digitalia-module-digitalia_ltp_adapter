@@ -100,7 +100,7 @@ class DigitaliaLtpUtils
 
 	public function getFullEntityUID($entity)
 	{
-		return $this->config->get('site_name') . _ . $this->getEntityUID($entity);
+		return $this->config->get('site_name') . "_" . $this->getEntityUID($entity);
 
 	}
 
@@ -147,9 +147,49 @@ class DigitaliaLtpUtils
 	public function addToQueue(String $directory)
 	{
 		$queue = \Drupal::service('queue')->get('digitalia_ltp_adapter_export_queue');
-		$item = new \stdClass();
-		$item->directory = $directory;
-		$queue->createItem($item);
+		if (!$queue->createItem($directory)) {
+			\Drupal::logger('digitalia_ltp_adapter')->error("Object '" . $directory . "'couldn't be added to queue.");
+		}
+	}
+
+
+	public function removeFromQueue(String $directory, bool $all = false)
+	{
+		\Drupal::logger('digitalia_ltp_adapter')->debug("removeFromQueue: start");
+		$queue = \Drupal::service('queue')->get('digitalia_ltp_adapter_export_queue');
+		$items = array();
+		while ($item = $queue->claimItem()) {
+			\Drupal::logger('digitalia_ltp_adapter')->debug("removeFromQueue: direcotry = " . $directory . "; item = " . $item->data);
+			if ($item->data == $directory) {
+				\Drupal::logger('digitalia_ltp_adapter')->debug("removeFromQueue: item found");
+				$queue->deleteItem($item);
+
+				if (!$all) {
+					return;
+				}
+			} else {
+				array_push($items, $item);
+			}
+		}
+
+		foreach ($items as $item) {
+			$queue->releaseItem($item);
+		}
+	}
+
+	public function getEntityStatus($entity)
+	{
+		$status = $entity->get("status");
+		$published = false;
+
+		// Untranslated entities store bool, translated entities are more complex
+		if (is_bool($status)) {
+			$published = $status;
+		} else {
+			$published = $status->getValue()[0]['value'];
+		}
+
+		return $published;
 	}
 
 	/**
@@ -186,10 +226,6 @@ class DigitaliaLtpUtils
 	private function archiveSourceEntity($entity, $export_mode, String $directory)
 	{
 		dpm("Preparing data...");
-		$to_encode = array();
-		$current_path = "objects";
-		array_push($this->directories, $directory);
-
 
 		if ($this->config->get('base_url') == "") {
 			dpm("Base URL not set! Aborting.");
@@ -197,7 +233,11 @@ class DigitaliaLtpUtils
 		}
 
 
+		$this->removeFromQueue($directory, true);
 		$this->preExportCleanup($entity);
+		$to_encode = array();
+		$current_path = "objects";
+		array_push($this->directories, $directory);
 
 		$dir_url = $this->config->get('base_url') . "/" . $directory;
 		$dir_metadata = $dir_url . "/metadata";
@@ -334,7 +374,7 @@ class DigitaliaLtpUtils
 				$filepath = $current_path . "/" . $filename;
 			}
 
-			$metadata = array('filename' => $filepath, 'export_language' => $lang);
+			$metadata = array('filename' => $filepath, 'export_language' => $lang, 'status' => $this->getEntityStatus($entity_translated));
 
 			$entity_bundle = $entity_translated->bundle();
 
@@ -408,7 +448,6 @@ class DigitaliaLtpUtils
 
 		dpm("Sending request...");
 
-		// TODO: deal with trailing slash in host URL
 		$am_host = $this->config->get('am_host');
 		$username = $this->config->get('api_key_username');
 		$password = $this->config->get('api_key_password');

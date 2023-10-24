@@ -25,20 +25,20 @@ class ExportQueue extends QueueWorkerBase
 	/**
 	* Processes an item in the queue.
 	*
-	* @param mixed $data
-	*   The queue item data.
+	* @param mixed $queue_item
+	*   The queue item queue_item.
 	*
 	* @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
 	* @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
 	* @throws \Drupal\Core\Entity\EntityStorageException
 	* @throws \Exception
 	*/
-	public function processItem($data)
+	public function processItem($queue_item)
 	{
 		\Drupal::logger('digitalia_ltp_adapter')->debug("Processing item from queue");
 
 		$utils = new DigitaliaLtpUtils();
-		$utils->startIngest(array($data->directory));
+		$utils->startIngest(array($queue_item));
 
 		\Drupal::logger('digitalia_ltp_adapter')->debug("Item from queue processed");
 	}

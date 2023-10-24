@@ -23,17 +23,7 @@ function digitalia_ltp_adapter_entity_presave(EntityInterface $entity)
 
 	if ($utils->getEnabledContentTypes()[$entity->bundle()]) {
 
-		$status = $entity->get("status");
-		$published = false;
-
-		// Untranslated entities store bool, translated entities are more complex
-		if (is_bool($status)) {
-			$published = $status;
-		} else {
-			$published = $status->getValue()[0]['value'];
-		}
-
-		if ($published) {
+		if ($utils->getEntityStatus($entity)) {
 			$utils->archiveData($entity, $utils::Single);
 		}
 	}
@@ -45,4 +35,12 @@ function digitalia_ltp_adapter_entity_presave(EntityInterface $entity)
 function digitalia_ltp_adapter_entity_predelete(EntityInterface $entity)
 {
 	dpm("Entity predelete hook");
+}
+
+/**
+ * implements hook_cron()
+ */
+function digitalia_ltp_adapter_cron()
+{
+	dpm("Cron hook");
 }
