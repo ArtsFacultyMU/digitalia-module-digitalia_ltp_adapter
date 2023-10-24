@@ -2,13 +2,16 @@
 
 ## TODO list
 - Add 'deleted' flag to objects deletd in Islandora
-- Solve possible race conditions when processing queue items and saving Isladora objects
+- ~~Solve possible race conditions when processing queue items and saving Isladora objects~~ the window is greatly reduced, if not removed
 
 ## Operation overview
 1. User in Islandora saves an object
 2. The object is exported into a directory shared between Islandora and Archivematica
 3. Object is added to queue to be ingested into Archivematica
 4. When cron is run, all objects in queue are ingested into Archivematica
+
+## Locking schema
+Upon entering the `archiveSourceEntity` function an attempt to lock the directory is executed. If successfull, the potential queue worker either finds a lock and waits, otherwise the save process waits until the transfer ended. Even if both processes (save and queue worker) somehow obtain lock and both procede, queue worker checks for `metadata.json`, which is copied after everything else has been copied to the directory. Writing of `metadata.json` should be atomic (uses `rename()` function).
 
 ## Terminology
 

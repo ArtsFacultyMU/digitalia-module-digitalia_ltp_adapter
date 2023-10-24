@@ -15,8 +15,6 @@ use GuzzleHttp\Exception\RequestException;
 class DigitaliaLtpUtils
 {
 	private $directories;
-
-
 	private $filesystem;
 	private $file_repository;
 	private $entity_manager;
@@ -24,7 +22,6 @@ class DigitaliaLtpUtils
 	private $config;
 	private $content_types_fields;
 	private $debug_settings;
-
 	private $METADATA_PATH;
 
 	const Flat = 0;
@@ -46,7 +43,6 @@ class DigitaliaLtpUtils
 		if ($debug_settings == null) {
 			$this->debug_settings = array(
 				'media_toggle' => true,
-				'ingest_toggle' => true,
 				'language_toggle' => false,
 			);
 		}
@@ -103,8 +99,6 @@ class DigitaliaLtpUtils
 		return $this->config->get('site_name') . "_" . $this->getEntityUID($entity);
 
 	}
-
-
 
 	public function printFieldConfig()
 	{
@@ -177,6 +171,52 @@ class DigitaliaLtpUtils
 		}
 	}
 
+	/**
+	 * Sadly NOT ATOMIC
+	 * Checks for lock. If lock is present wait and check again
+	 */
+	public function checkAndLock(String $directory, int $interval = 2)
+	{
+		\Drupal::logger('digitalia_ltp_adapter')->debug("checkAndLock: start");
+		$path = $this->config->get('base_url') . "/" . $directory;
+		$this->filesystem->prepareDirectory($path, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
+
+		while ($this->checkLock($directory)) {
+			sleep($interval);
+		}
+
+		$this->addLock($directory);
+		\Drupal::logger('digitalia_ltp_adapter')->debug("checkAndLock: end");
+	}
+
+	private function checkLock(String $directory)
+	{
+		\Drupal::logger('digitalia_ltp_adapter')->debug("checkLock: start, directory: '" . $directory . "'");
+		clearstatcache(true, $this->config->get('base_url') . "/" . $directory . "/lock");
+		return file_exists($this->config->get('base_url') . "/" . $directory . "/lock");
+	}
+
+	private function addLock(String $directory)
+	{
+		\Drupal::logger('digitalia_ltp_adapter')->debug("addLock: start");
+		$this->file_repository->writeData("", $this->config->get('base_url') . "/" . $directory . "/lock", FileSystemInterface::EXISTS_REPLACE);
+		\Drupal::logger('digitalia_ltp_adapter')->debug("addLock: end");
+	}
+
+	public function removeLock(String $directory)
+	{
+		\Drupal::logger('digitalia_ltp_adapter')->debug("removeLock: start");
+		$this->filesystem->delete($this->config->get('base_url') . "/" . $directory . "/lock");
+	}
+
+	/**
+	 * Checks wether the entity is published
+	 *
+	 * @param $entity
+	 *  Drupal entity
+	 *
+	 * @return bool
+	 */
 	public function getEntityStatus($entity)
 	{
 		$status = $entity->get("status");
@@ -233,8 +273,11 @@ class DigitaliaLtpUtils
 		}
 
 
-		$this->removeFromQueue($directory, true);
+		$this->checkAndLock($directory);
+		$this->removeFromQueue($directory);
 		$this->preExportCleanup($entity);
+		$this->checkAndLock($directory);
+
 		$to_encode = array();
 		$current_path = "objects";
 		array_push($this->directories, $directory);
@@ -246,42 +289,21 @@ class DigitaliaLtpUtils
 		$this->filesystem->prepareDirectory($dir_metadata, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 		$this->filesystem->prepareDirectory($dir_objects, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 
-
-
 		$this->harvestMetadata($entity, $current_path, $to_encode, $export_mode, $dir_url);
 
 		$encoded = json_encode($to_encode, JSON_UNESCAPED_SLASHES);
-
 
 		dpm(json_encode($to_encode, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
 
 		$this->file_repository->writeData($encoded, $dir_url . "/" . $this->METADATA_PATH, FileSystemInterface::EXISTS_REPLACE);
 
+		$this->removeLock($directory);
 		$this->addToQueue($directory);
 
 		dpm("Data prepared!");
 
 
 	}
-
-	/**
-	 * Starts ingest in archivematica
-	 *
-	 * @param $directories
-	 *   Object directories to be ingested
-	 */
-	public function startIngest(array $directories)
-	{
-		dpm("Starting archivation process...");
-		\Drupal::logger('digitalia_ltp_adapter')->debug("Starting archivation process...");
-
-		$this->startTransfer($directories);
-
-
-		dpm("Archivation proces started!");
-		\Drupal::logger('digitalia_ltp_adapter')->debug("Archivation proces started!");
-	}
-
 
 	/**
 	 * Appends metadata of all descendants of a entity
@@ -431,18 +453,73 @@ class DigitaliaLtpUtils
 		$this->entityExtractMetadata($medium, $current_path, $to_encode, $dir_url, $file->getFilename());
 	}
 
+	/**
+	 * Starts ingest in archivematica
+	 *
+	 * @param $directory
+	 *   Object directory to be ingested
+	 */
+	public function startIngest(String $directory)
+	{
+		dpm("startIngest: start");
+		\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: start");
+
+		$transfer_uuid = $this->startTransfer($directory);
+
+		if ($transfer_uuid) {
+			$this->waitForTransferCompletion($transfer_uuid);
+			dpm("startIngest: transfer completed!");
+			\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: transfer completed!");
+			return;
+		}
+
+	}
+
+	private function waitForTransferCompletion(String $transfer_uuid)
+	{
+		$am_host = $this->config->get('am_host');
+		$username = $this->config->get('api_key_username');
+		$password = $this->config->get('api_key_password');
+		$status = "";
+		$response = "";
+
+		$client = \Drupal::httpClient();
+
+		while ($status != "COMPLETE") {
+			\Drupal::logger('digitalia_ltp_adapter')->debug("waitForTransferCompletion: loop started");
+			sleep(1);
+			try {
+				$response = $client->request('GET', $am_host . '/api/transfer/status/' . $transfer_uuid, ['headers' => ['Authorization' => 'ApiKey ' . $username . ":" . $password, 'Host' => "dirk.localnet"]]);
+				$status = json_decode($response->getBody()->getContents(), TRUE)["status"];
+				\Drupal::logger('digitalia_ltp_adapter')->debug("waitForTransferCompletion: status = " . $status);
+				//\Drupal::logger('digitalia_ltp_adapter')->debug(json_decode($response->getBody()->getContents(), TRUE));
+			} catch (\Exception $e) {
+				dpm($e->getMessage());
+				return false;
+			}
+
+			if ($status == "FAILED" || $status == "REJECTED" || $status == "USER_INPUT") {
+				\Drupal::logger('digitalia_ltp_adapter')->debug("waitForTransferCompletion: status = " . $status);
+			}
+		}
+
+		//\Drupal::logger('digitalia_ltp_adapter')->debug(json_decode($response->getBody()->getContents(), TRUE));
+		\Drupal::logger('digitalia_ltp_adapter')->debug("waitForTransferCompletion: transfer completed");
+	}
 
 	/**
 	 * Starts transfer of selected directories to Archivematica
 	 *
-	 * @param Array $directories
-	 *   Directories, which are to be ingested
+	 * @param String $directory
+	 *   Directory, which is to be ingested
+	 *
+	 * @return String
+	 *   Transfer UUID
 	 */
-	private function startTransfer(Array $directories)
+	private function startTransfer(String $directory)
 	{
-		if (!$this->debug_settings['ingest_toggle']) {
-			dpm("Ingest disabled");
-			\Drupal::logger('digitalia_ltp_adapter')->debug("Ingest disabled");
+		if (!file_exists($this->config->get('base_url') . "/" . $directory . "/metadata/metadata.json")) {
+			\Drupal::logger('digitalia_ltp_adapter')->debug("No metadata.json found. Transfer aborted.");
 			return;
 		}
 
@@ -454,20 +531,18 @@ class DigitaliaLtpUtils
 
 		$client = \Drupal::httpClient();
 
+		$path = "/archivematica/" . $directory;
+		$transfer_name = transliterator_transliterate('Any-Latin;Latin-ASCII;', $directory);
 
-		foreach($directories as $directory) {
-			$path = "/archivematica/" . $directory;
-			$transfer_name = transliterator_transliterate('Any-Latin;Latin-ASCII;', $directory);
-
-			$ingest_params = array('path' => base64_encode($path), 'name' => $transfer_name, 'processing_config' => 'automated', 'type' => 'standard');
-			try {
-				$response = $client->request('POST', $am_host . '/api/v2beta/package', ['headers' => ['Authorization' => 'ApiKey ' . $username . ":" . $password, 'ContentType' => 'application/json'], 'body' => json_encode($ingest_params)]);
-				dpm(json_decode($response->getBody()->getContents(), TRUE));
-			} catch (\Exception $e) {
-				dpm($e->getMessage());
-				return false;
-			}
+		$ingest_params = array('path' => base64_encode($path), 'name' => $transfer_name, 'processing_config' => 'automated', 'type' => 'standard');
+		try {
+			$response = $client->request('POST', $am_host . '/api/v2beta/package', ['headers' => ['Authorization' => 'ApiKey ' . $username . ":" . $password, 'ContentType' => 'application/json'], 'body' => json_encode($ingest_params)]);
+			return json_decode($response->getBody()->getContents(), TRUE)["id"];
+		} catch (\Exception $e) {
+			dpm($e->getMessage());
+			return false;
 		}
+		dpm("Request sent");
 	}
 
 

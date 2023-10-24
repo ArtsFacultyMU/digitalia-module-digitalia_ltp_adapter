@@ -33,12 +33,7 @@ class GenerateMetadataForm extends FormBase
 		$form['export'] = [
 			'#type' => 'select',
 			'#title' => $this->t('Select export type'),
-			'#options' => ["separate", "tree", "flat", "single"],
-		];
-
-		$form['ingest_toggle'] = [
-			'#type' => 'checkbox',
-			'#title' => $this->t('Start archivematica ingest'),
+			'#options' => ["single", "separate"]
 		];
 
 		$form['media_toggle'] = [
@@ -115,7 +110,6 @@ class GenerateMetadataForm extends FormBase
 
 		$debug_settings = array(
 			'media_toggle' => $form_state->getValue('media_toggle'),
-			'ingest_toggle' => $form_state->getValue('ingest_toggle'),
 			'language_toggle' => $form_state->getValue('language_toggle'),
 		);
 
@@ -127,20 +121,14 @@ class GenerateMetadataForm extends FormBase
 		dpm("Value: " . $value);
 
 		switch($value) {
-		case 'tree':
-			$export_type = $utils::Tree;
-			break;
 		case 'separate':
 			$export_type = $utils::Separate;
-			break;
-		case 'flat':
-			$export_type = $utils::Flat;
 			break;
 		case 'single':
 			$export_type = $utils::Single;
 			break;
 		default:
-			$export_type = $utils::Flat;
+			$export_type = $utils::Single;
 		}
 
 		dpm("export_type: " . $export_type);
@@ -151,7 +139,9 @@ class GenerateMetadataForm extends FormBase
 		dpm($this->directories);
 
 
-		$utils->startIngest($this->directories);
+		foreach ($this->directories as $directory) {
+			$utils->startIngest($directory);
+		}
 
 	}
 

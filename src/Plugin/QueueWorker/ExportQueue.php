@@ -38,7 +38,9 @@ class ExportQueue extends QueueWorkerBase
 		\Drupal::logger('digitalia_ltp_adapter')->debug("Processing item from queue");
 
 		$utils = new DigitaliaLtpUtils();
-		$utils->startIngest(array($queue_item));
+		$utils->checkAndLock($queue_item);
+		$utils->startIngest($queue_item);
+		$utils->removeLock($queue_item);
 
 		\Drupal::logger('digitalia_ltp_adapter')->debug("Item from queue processed");
 	}
