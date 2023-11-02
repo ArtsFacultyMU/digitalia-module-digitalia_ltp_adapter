@@ -100,11 +100,6 @@ class DigitaliaLtpUtils
 
 	}
 
-	public function printFieldConfig()
-	{
-		dpm($this->content_types_fields);
-	}
-
 	/**
 	 * Creates filename/directory friendly uid for entities
 	 *
@@ -138,6 +133,12 @@ class DigitaliaLtpUtils
 
 	}
 
+	/**
+	 * Adds a directory to ingest queue
+	 *
+	 * @param String $directory
+	 *   Name of directory to be ingested
+	 */
 	public function addToQueue(String $directory)
 	{
 		$queue = \Drupal::service('queue')->get('digitalia_ltp_adapter_export_queue');
@@ -147,6 +148,15 @@ class DigitaliaLtpUtils
 	}
 
 
+	/**
+	 * Removes directory from ingest queue
+	 *
+	 * @param String $directory
+	 *   Name of directory to remove from ingest queue
+	 *
+	 * @param bool $all
+	 *   Set to true to delete all intstances of $directory from queue
+	 */
 	public function removeFromQueue(String $directory, bool $all = false)
 	{
 		\Drupal::logger('digitalia_ltp_adapter')->debug("removeFromQueue: start");
@@ -232,21 +242,35 @@ class DigitaliaLtpUtils
 		return $published;
 	}
 
+	public function updateEntity($entity, bool $delete)
+	{
+		if (!$this->getConfig()->get('auto_generate_switch')) {
+			return;
+		}
+
+
+		if ($this->getEnabledContentTypes()[$entity->bundle()]) {
+
+			if ($this->getEntityStatus($entity)) {
+				$this->archiveData($entity, $this::Single, $delete);
+			}
+		}
+	}
+
 	/**
 	 * Entrypoint for archiving
 	 *
 	 * @return array
 	 *   Array of object directories prepared for ingest
 	 */
-	public function archiveData($entity, $export_mode)
+	public function archiveData($entity, $export_mode, bool $deleted = false)
 	{
-		// Using id(), get('title') can contain '/' and other nasty characters
 		if (!$entity) {
 			return $this->directories;
 		}
 
 		$type = $entity->getEntityTypeId();
-		$this->archiveSourceEntity($entity, $export_mode, $this->config->get('site_name') . "_" . $this->getEntityUID($entity));
+		$this->archiveSourceEntity($entity, $export_mode, $this->config->get('site_name') . "_" . $this->getEntityUID($entity), $deleted);
 
 		return $this->directories;
 	}
@@ -262,8 +286,11 @@ class DigitaliaLtpUtils
 	 *
 	 * @param String $directory
 	 *   Name of base object directory
+	 *
+	 * @param bool $deleted
+	 *   True if entity is deleted
 	 */
-	private function archiveSourceEntity($entity, $export_mode, String $directory)
+	private function archiveSourceEntity($entity, $export_mode, String $directory, bool $deleted)
 	{
 		dpm("Preparing data...");
 
@@ -278,6 +305,7 @@ class DigitaliaLtpUtils
 		$this->preExportCleanup($entity);
 		$this->checkAndLock($directory);
 
+		//$to_encode = array('deleted' => $deleted);
 		$to_encode = array();
 		$current_path = "objects";
 		array_push($this->directories, $directory);
@@ -289,7 +317,7 @@ class DigitaliaLtpUtils
 		$this->filesystem->prepareDirectory($dir_metadata, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 		$this->filesystem->prepareDirectory($dir_objects, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 
-		$this->harvestMetadata($entity, $current_path, $to_encode, $export_mode, $dir_url);
+		$this->harvestMetadata($entity, $current_path, $to_encode, $export_mode, $dir_url, $deleted);
 
 		$encoded = json_encode($to_encode, JSON_UNESCAPED_SLASHES);
 
@@ -323,7 +351,7 @@ class DigitaliaLtpUtils
 	 * @param String $dir_url
 	 *   URL of object directory, which is ingested to Archivematica
 	 */
-	private function harvestMetadata($entity, String $base_path, Array &$to_encode, $export_mode, String $dir_url)
+	private function harvestMetadata($entity, String $base_path, Array &$to_encode, $export_mode, String $dir_url, bool $deleted)
 	{
 		dpm("Entity type id: " . $entity->getEntityTypeId());
 		$type = $entity->getEntityTypeId();
@@ -336,21 +364,21 @@ class DigitaliaLtpUtils
 		if ($type == "node") {
 			$children = $this->entity_manager->getStorage('node')->loadByProperties(['field_member_of' => $entity->id()]);
 			$media = $this->entity_manager->getStorage('media')->loadByProperties(['field_media_of' => $entity->id()]);
-			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "");
+			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "", $deleted);
 		}
 
 		if ($type == "media") {
-			$this->harvestMedia($entity, $current_path, $to_encode, $dir_url);
+			$this->harvestMedia($entity, $current_path, $to_encode, $dir_url, $deleted);
 		}
 
 		if ($type == "taxonomy_term") {
 			dpm("taxonomy_term type harvesting");
-			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "");
+			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "", $deleted);
 		}
 
 		if ($type == "taxonomy_vocabulary") {
 			dpm("taxonomy_vocabulary type harvesting");
-			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "");
+			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "", $deleted);
 		}
 
 
@@ -384,7 +412,7 @@ class DigitaliaLtpUtils
 	 * @param String $filename
 	 *   Entity filename, empty when not a file
 	 */
-	private function entityExtractMetadata($entity, String $current_path, Array &$to_encode, String $dir_url, String $filename)
+	private function entityExtractMetadata($entity, String $current_path, Array &$to_encode, String $dir_url, String $filename, bool $deleted)
 	{
 		foreach ($this->languages as $lang => $_value) {
 			$entity_translated = \Drupal::service('entity.repository')->getTranslationFromContext($entity, $lang);
@@ -396,7 +424,7 @@ class DigitaliaLtpUtils
 				$filepath = $current_path . "/" . $filename;
 			}
 
-			$metadata = array('filename' => $filepath, 'export_language' => $lang, 'status' => $this->getEntityStatus($entity_translated));
+			$metadata = array('filename' => $filepath, 'export_language' => $lang, 'status' => $this->getEntityStatus($entity_translated), 'deleted' => $deleted);
 
 			$entity_bundle = $entity_translated->bundle();
 
@@ -440,7 +468,7 @@ class DigitaliaLtpUtils
 	 * @param String $dir_url
 	 *   URL of staging directory
 	 */
-	private function harvestMedia($medium, String $current_path, Array &$to_encode, String $dir_url)
+	private function harvestMedia($medium, String $current_path, Array &$to_encode, String $dir_url, bool $deleted)
 	{
 		$fid = $medium->getSource()->getSourceFieldValue($medium);
 		$file = File::load($fid);
@@ -450,7 +478,7 @@ class DigitaliaLtpUtils
 		//\Drupal::logger('digitalia_ltp_adapter')->debug();
 		dpm($medium->bundle());
 
-		$this->entityExtractMetadata($medium, $current_path, $to_encode, $dir_url, $file->getFilename());
+		$this->entityExtractMetadata($medium, $current_path, $to_encode, $dir_url, $file->getFilename(), $deleted);
 	}
 
 	/**
@@ -475,6 +503,12 @@ class DigitaliaLtpUtils
 
 	}
 
+	/**
+	 * Blocks until a transfer is finished, logs unsuccessful transfers
+	 *
+	 * @param String $transfer_uuid
+	 *   uuid to wait for
+	 */
 	private function waitForTransferCompletion(String $transfer_uuid)
 	{
 		$am_host = $this->config->get('am_host');
@@ -492,7 +526,6 @@ class DigitaliaLtpUtils
 				$response = $client->request('GET', $am_host . '/api/transfer/status/' . $transfer_uuid, ['headers' => ['Authorization' => 'ApiKey ' . $username . ":" . $password, 'Host' => "dirk.localnet"]]);
 				$status = json_decode($response->getBody()->getContents(), TRUE)["status"];
 				\Drupal::logger('digitalia_ltp_adapter')->debug("waitForTransferCompletion: status = " . $status);
-				//\Drupal::logger('digitalia_ltp_adapter')->debug(json_decode($response->getBody()->getContents(), TRUE));
 			} catch (\Exception $e) {
 				dpm($e->getMessage());
 				return false;
@@ -503,7 +536,6 @@ class DigitaliaLtpUtils
 			}
 		}
 
-		//\Drupal::logger('digitalia_ltp_adapter')->debug(json_decode($response->getBody()->getContents(), TRUE));
 		\Drupal::logger('digitalia_ltp_adapter')->debug("waitForTransferCompletion: transfer completed");
 	}
 
@@ -558,6 +590,16 @@ class DigitaliaLtpUtils
 		$filepath = $this->config->get('base_url') . "/" . $filename;
 
 		$this->filesystem->deleteRecursive($filepath);
+	}
+
+
+	/**
+	 * DEBUG SECTION
+	 */
+
+	public function printFieldConfig()
+	{
+		dpm($this->content_types_fields);
 	}
 
 }

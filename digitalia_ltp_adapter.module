@@ -6,35 +6,48 @@ use Drupal\node\Entity\Node;
 
 
 /**
- * implements hook_entity_presave()
+ * Transfer published objects to Archivematica
+ *
+ * implements hook_entity_update()
  */
-function digitalia_ltp_adapter_entity_presave(EntityInterface $entity)
+function digitalia_ltp_adapter_entity_update(EntityInterface $entity)
 {
-	dpm("Entity presave hook");
-	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity presave hook");
+	dpm("Entity update hook");
+	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity update hook");
 	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
 
 	$utils = new DigitaliaLtpUtils();
-
-	if (!$utils->getConfig()->get('auto_generate_switch')) {
-		return;
-	}
-
-
-	if ($utils->getEnabledContentTypes()[$entity->bundle()]) {
-
-		if ($utils->getEntityStatus($entity)) {
-			$utils->archiveData($entity, $utils::Single);
-		}
-	}
+	$utils->updateEntity($entity, false);
 }
 
 /**
+ * Transfer published objects to Archivematica
+ *
+ * implements hook_entity_insert()
+ */
+function digitalia_ltp_adapter_entity_insert(EntityInterface $entity)
+{
+	dpm("Entity insesrt hook");
+	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity insert hook");
+	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
+
+	$utils = new DigitaliaLtpUtils();
+	$utils->updateEntity($entity, false);
+}
+
+/**
+ * Transfer deleted objects to Archivematica and mark them as deleted
+ *
  * implements hook_entity_predelete()
  */
 function digitalia_ltp_adapter_entity_predelete(EntityInterface $entity)
 {
 	dpm("Entity predelete hook");
+	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity predelete hook");
+	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
+
+	$utils = new DigitaliaLtpUtils();
+	$utils->updateEntity($entity, true);
 }
 
 /**
