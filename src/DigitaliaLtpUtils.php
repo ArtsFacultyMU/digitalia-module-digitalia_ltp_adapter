@@ -556,9 +556,9 @@ class DigitaliaLtpUtils
 		\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: start");
 
 		$transfer_uuid = $this->startTransfer($directory);
-		\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: transfer with uuid: '$transfer_uuid' started!");
 
 		if ($transfer_uuid) {
+			\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: transfer with uuid: '$transfer_uuid' started!");
 			$this->waitForTransferCompletion($transfer_uuid);
 			dpm("startIngest: transfer completed!");
 			\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: transfer with uuid: '$transfer_uuid' completed!");
@@ -636,6 +636,7 @@ class DigitaliaLtpUtils
 			return json_decode($response->getBody()->getContents(), TRUE)["id"];
 		} catch (\Exception $e) {
 			dpm($e->getMessage());
+			\Drupal::logger('digitalia_ltp_adapter')->debug("waitForTransferCompletion: " . $e->getMessage());
 			return false;
 		}
 		dpm("Request sent");
