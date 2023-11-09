@@ -22,12 +22,17 @@ class DigitaliaLtpUtils
 	private $config;
 	private $content_types_fields;
 	private $debug_settings;
-	private $METADATA_PATH;
 
-	const Flat = 0;
-	const Tree = 1;
-	const Single = 2;
-	const Separate = 3;
+	// export types
+	const EXPORT_FLAT = 0;
+	const EXPORT_TREE = 1;
+	const EXPORT_SINGLE = 2;
+	const EXPORT_SEPARATE = 3;
+
+	const UPDATE_CREATE = 10;
+	const UPDATE_DELETE = 11;
+
+	const METADATA_PATH = "metadata/metadata.json";
 
 	public function __construct(array $debug_settings = null)
 	{
@@ -46,10 +51,6 @@ class DigitaliaLtpUtils
 				'language_toggle' => false,
 			);
 		}
-
-		// TODO: change to constants
-		$this->METADATA_PATH = "metadata/metadata.json";
-
 	}
 
 	/**
@@ -94,6 +95,15 @@ class DigitaliaLtpUtils
 		return $this->config;
 	}
 
+	/**
+	 * Gets full entity uid for export directory structure (base object directory)
+	 *
+	 * @param $entity
+	 *   Entity for which to generate full uid
+	 *
+	 * @return
+	 *   String full uid
+	 */
 	public function getFullEntityUID($entity)
 	{
 		return $this->config->get('site_name') . "_" . $this->getEntityUID($entity);
@@ -183,20 +193,47 @@ class DigitaliaLtpUtils
 
 	/**
 	 * Sadly NOT ATOMIC
-	 * Checks for lock. If lock is present wait and check again
+	 * Tries to lock directory. Blocks for at most $timeout seconds
+	 *
+	 * @param String $directory
+	 *   Directory to lock
+	 *
+	 * @param int $interval
+	 *   Lock checking interval in seconds
+	 *
+	 * @param int $timeout
+	 *   Max blocking time in seconds
+	 *
+	 * @return bool
+	 *   True if successfull
 	 */
-	public function checkAndLock(String $directory, int $interval = 2)
+	public function checkAndLock(String $directory, int $interval = 2, int $timeout = 20)
 	{
 		\Drupal::logger('digitalia_ltp_adapter')->debug("checkAndLock: start");
 		$path = $this->config->get('base_url') . "/" . $directory;
 		$this->filesystem->prepareDirectory($path, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
+		$total_wait = 0;
 
 		while ($this->checkLock($directory)) {
 			sleep($interval);
+			$total_wait += $interval;
+			if ($total_wait >= $timeout) {
+				return false;
+			}
 		}
 
 		$this->addLock($directory);
 		\Drupal::logger('digitalia_ltp_adapter')->debug("checkAndLock: end");
+		return true;
+	}
+
+	/**
+	 * Removes lock from a directory
+	 */
+	public function removeLock(String $directory)
+	{
+		\Drupal::logger('digitalia_ltp_adapter')->debug("removeLock: start");
+		$this->filesystem->delete($this->config->get('base_url') . "/" . $directory . "/lock");
 	}
 
 	private function checkLock(String $directory)
@@ -213,11 +250,6 @@ class DigitaliaLtpUtils
 		\Drupal::logger('digitalia_ltp_adapter')->debug("addLock: end");
 	}
 
-	public function removeLock(String $directory)
-	{
-		\Drupal::logger('digitalia_ltp_adapter')->debug("removeLock: start");
-		$this->filesystem->delete($this->config->get('base_url') . "/" . $directory . "/lock");
-	}
 
 	/**
 	 * Checks wether the entity is published
@@ -229,6 +261,7 @@ class DigitaliaLtpUtils
 	 */
 	public function getEntityStatus($entity)
 	{
+		// TODO: decide if language variants of an entity are separate entities
 		$status = $entity->get("status");
 		$published = false;
 
@@ -242,17 +275,25 @@ class DigitaliaLtpUtils
 		return $published;
 	}
 
-	public function updateEntity($entity, bool $delete)
+	/**
+	 * Tries to create/update entity and transfer it into Archivematica
+	 *
+	 * @param $entity
+	 *   Drupal entity
+	 *
+	 * @param $update_mode
+	 *   Indicator of deletion
+	 */
+	public function updateEntity($entity, $update_mode)
 	{
+		// TODO: consolidate with archiveData?
 		if (!$this->getConfig()->get('auto_generate_switch')) {
 			return;
 		}
 
-
 		if ($this->getEnabledContentTypes()[$entity->bundle()]) {
-
 			if ($this->getEntityStatus($entity)) {
-				$this->archiveData($entity, $this::Single, $delete);
+				$this->archiveData($entity, $this::EXPORT_SINGLE, $update_mode);
 			}
 		}
 	}
@@ -260,17 +301,26 @@ class DigitaliaLtpUtils
 	/**
 	 * Entrypoint for archiving
 	 *
+	 * @param $entity
+	 *   Entity which is to be ingested into archivematica
+	 *
+	 * @param $export_mode
+	 *   Sets the object export mode
+	 *
+	 * @param $update_mode
+	 *   Indicator of deletion
+	 *
 	 * @return array
 	 *   Array of object directories prepared for ingest
 	 */
-	public function archiveData($entity, $export_mode, bool $deleted = false)
+	public function archiveData($entity, $export_mode, $update_mode)
 	{
 		if (!$entity) {
 			return $this->directories;
 		}
 
 		$type = $entity->getEntityTypeId();
-		$this->archiveSourceEntity($entity, $export_mode, $this->config->get('site_name') . "_" . $this->getEntityUID($entity), $deleted);
+		$this->archiveSourceEntity($entity, $export_mode, $this->config->get('site_name') . "_" . $this->getEntityUID($entity), $update_mode);
 
 		return $this->directories;
 	}
@@ -287,10 +337,10 @@ class DigitaliaLtpUtils
 	 * @param String $directory
 	 *   Name of base object directory
 	 *
-	 * @param bool $deleted
-	 *   True if entity is deleted
+	 * @param $update_mode
+	 *   Indicator of deletion
 	 */
-	private function archiveSourceEntity($entity, $export_mode, String $directory, bool $deleted)
+	private function archiveSourceEntity($entity, $export_mode, String $directory, $update_mode)
 	{
 		dpm("Preparing data...");
 
@@ -299,13 +349,19 @@ class DigitaliaLtpUtils
 			return;
 		}
 
+		if (!$this->checkAndLock($directory)) {
+			\Drupal::logger('digitalia_ltp_adapter')->debug("Couldn't obtain lock for directory '$directory', pre cleanup");
+			return;
+		}
 
-		$this->checkAndLock($directory);
 		$this->removeFromQueue($directory);
 		$this->preExportCleanup($entity);
-		$this->checkAndLock($directory);
 
-		//$to_encode = array('deleted' => $deleted);
+		if (!$this->checkAndLock($directory)) {
+			\Drupal::logger('digitalia_ltp_adapter')->debug("Couldn't obtain lock for directory '$directory', post cleanup");
+			return;
+		}
+
 		$to_encode = array();
 		$current_path = "objects";
 		array_push($this->directories, $directory);
@@ -317,20 +373,18 @@ class DigitaliaLtpUtils
 		$this->filesystem->prepareDirectory($dir_metadata, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 		$this->filesystem->prepareDirectory($dir_objects, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 
-		$this->harvestMetadata($entity, $current_path, $to_encode, $export_mode, $dir_url, $deleted);
+		$this->harvestMetadata($entity, $current_path, $to_encode, $export_mode, $dir_url, $update_mode);
 
 		$encoded = json_encode($to_encode, JSON_UNESCAPED_SLASHES);
 
 		dpm(json_encode($to_encode, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
 
-		$this->file_repository->writeData($encoded, $dir_url . "/" . $this->METADATA_PATH, FileSystemInterface::EXISTS_REPLACE);
+		$this->file_repository->writeData($encoded, $dir_url . "/" . $this::METADATA_PATH, FileSystemInterface::EXISTS_REPLACE);
 
 		$this->removeLock($directory);
 		$this->addToQueue($directory);
 
 		dpm("Data prepared!");
-
-
 	}
 
 	/**
@@ -350,8 +404,11 @@ class DigitaliaLtpUtils
 	 *
 	 * @param String $dir_url
 	 *   URL of object directory, which is ingested to Archivematica
+	 *
+	 * @param $update_mode
+	 *   Indicator of deletion
 	 */
-	private function harvestMetadata($entity, String $base_path, Array &$to_encode, $export_mode, String $dir_url, bool $deleted)
+	private function harvestMetadata($entity, String $base_path, Array &$to_encode, $export_mode, String $dir_url, $update_mode)
 	{
 		dpm("Entity type id: " . $entity->getEntityTypeId());
 		$type = $entity->getEntityTypeId();
@@ -364,25 +421,25 @@ class DigitaliaLtpUtils
 		if ($type == "node") {
 			$children = $this->entity_manager->getStorage('node')->loadByProperties(['field_member_of' => $entity->id()]);
 			$media = $this->entity_manager->getStorage('media')->loadByProperties(['field_media_of' => $entity->id()]);
-			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "", $deleted);
+			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "", $update_mode);
 		}
 
 		if ($type == "media") {
-			$this->harvestMedia($entity, $current_path, $to_encode, $dir_url, $deleted);
+			$this->harvestMedia($entity, $current_path, $to_encode, $dir_url, $update_mode);
 		}
 
 		if ($type == "taxonomy_term") {
 			dpm("taxonomy_term type harvesting");
-			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "", $deleted);
+			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "", $update_mode);
 		}
 
 		if ($type == "taxonomy_vocabulary") {
 			dpm("taxonomy_vocabulary type harvesting");
-			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "", $deleted);
+			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "", $update_mode);
 		}
 
 
-		if ($export_mode == $this::Separate) {
+		if ($export_mode == $this::EXPORT_SEPARATE) {
 			foreach($children as $child) {
 				$this->archiveData($child, $export_mode);
 			}
@@ -391,7 +448,6 @@ class DigitaliaLtpUtils
 				$this->archiveData($medium, $export_mode);
 			}
 		}
-
 	}
 
 	/**
@@ -411,8 +467,11 @@ class DigitaliaLtpUtils
 	 *
 	 * @param String $filename
 	 *   Entity filename, empty when not a file
+	 *
+	 * @param $update_mode
+	 *   Indicator of deletion
 	 */
-	private function entityExtractMetadata($entity, String $current_path, Array &$to_encode, String $dir_url, String $filename, bool $deleted)
+	private function entityExtractMetadata($entity, String $current_path, Array &$to_encode, String $dir_url, String $filename, $update_mode)
 	{
 		foreach ($this->languages as $lang => $_value) {
 			$entity_translated = \Drupal::service('entity.repository')->getTranslationFromContext($entity, $lang);
@@ -423,6 +482,8 @@ class DigitaliaLtpUtils
 			} else {
 				$filepath = $current_path . "/" . $filename;
 			}
+
+			$deleted = $update_mode == $this::UPDATE_DELETE;
 
 			$metadata = array('filename' => $filepath, 'export_language' => $lang, 'status' => $this->getEntityStatus($entity_translated), 'deleted' => $deleted);
 
@@ -450,7 +511,6 @@ class DigitaliaLtpUtils
 				break;
 			}
 		}
-
 	}
 
 	/**
@@ -467,8 +527,11 @@ class DigitaliaLtpUtils
 	 *
 	 * @param String $dir_url
 	 *   URL of staging directory
+	 *
+	 * @param $update_mode
+	 *   Indicator of deletion
 	 */
-	private function harvestMedia($medium, String $current_path, Array &$to_encode, String $dir_url, bool $deleted)
+	private function harvestMedia($medium, String $current_path, Array &$to_encode, String $dir_url, $update_mode)
 	{
 		$fid = $medium->getSource()->getSourceFieldValue($medium);
 		$file = File::load($fid);
@@ -478,11 +541,11 @@ class DigitaliaLtpUtils
 		//\Drupal::logger('digitalia_ltp_adapter')->debug();
 		dpm($medium->bundle());
 
-		$this->entityExtractMetadata($medium, $current_path, $to_encode, $dir_url, $file->getFilename(), $deleted);
+		$this->entityExtractMetadata($medium, $current_path, $to_encode, $dir_url, $file->getFilename(), $update_mode);
 	}
 
 	/**
-	 * Starts ingest in archivematica
+	 * Starts ingest in archivematica, logs UUID of transfer
 	 *
 	 * @param $directory
 	 *   Object directory to be ingested
@@ -493,11 +556,12 @@ class DigitaliaLtpUtils
 		\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: start");
 
 		$transfer_uuid = $this->startTransfer($directory);
+		\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: transfer with uuid: '$transfer_uuid' started!");
 
 		if ($transfer_uuid) {
 			$this->waitForTransferCompletion($transfer_uuid);
 			dpm("startIngest: transfer completed!");
-			\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: transfer completed!");
+			\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: transfer with uuid: '$transfer_uuid' completed!");
 			return;
 		}
 

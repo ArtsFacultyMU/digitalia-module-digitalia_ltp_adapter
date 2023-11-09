@@ -17,7 +17,7 @@ function digitalia_ltp_adapter_entity_update(EntityInterface $entity)
 	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
 
 	$utils = new DigitaliaLtpUtils();
-	$utils->updateEntity($entity, false);
+	$utils->updateEntity($entity, $utils::UPDATE_CREATE);
 }
 
 /**
@@ -32,7 +32,7 @@ function digitalia_ltp_adapter_entity_insert(EntityInterface $entity)
 	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
 
 	$utils = new DigitaliaLtpUtils();
-	$utils->updateEntity($entity, false);
+	$utils->updateEntity($entity, $utils::UPDATE_CREATE);
 }
 
 /**
@@ -47,7 +47,7 @@ function digitalia_ltp_adapter_entity_predelete(EntityInterface $entity)
 	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
 
 	$utils = new DigitaliaLtpUtils();
-	$utils->updateEntity($entity, true);
+	$utils->updateEntity($entity, $utils::UPDATE_DELETE);
 }
 
 /**
