@@ -23,12 +23,6 @@ class DigitaliaLtpUtils
 	private $content_types_fields;
 	private $debug_settings;
 
-	// export types
-	const EXPORT_FLAT = 0;
-	const EXPORT_TREE = 1;
-	const EXPORT_SINGLE = 2;
-	const EXPORT_SEPARATE = 3;
-
 	const UPDATE_CREATE = 10;
 	const UPDATE_DELETE = 11;
 
@@ -296,7 +290,7 @@ class DigitaliaLtpUtils
 
 		if ($this->getEnabledContentTypes()[$entity->bundle()]) {
 			if ($this->getEntityStatus($entity)) {
-				$this->archiveData($entity, $this::EXPORT_SINGLE, $update_mode);
+				$this->archiveData($entity, $update_mode);
 			}
 		}
 	}
@@ -307,23 +301,20 @@ class DigitaliaLtpUtils
 	 * @param $entity
 	 *   Entity which is to be ingested into archivematica
 	 *
-	 * @param $export_mode
-	 *   Sets the object export mode
-	 *
 	 * @param $update_mode
 	 *   Indicator of deletion
 	 *
 	 * @return array
 	 *   Array of object directories prepared for ingest
 	 */
-	public function archiveData($entity, $export_mode, $update_mode)
+	public function archiveData($entity, $update_mode)
 	{
 		if (!$entity) {
 			return $this->directories;
 		}
 
 		$type = $entity->getEntityTypeId();
-		$this->archiveSourceEntity($entity, $export_mode, $this->config->get('site_name') . "_" . $this->getEntityUID($entity), $update_mode);
+		$this->archiveSourceEntity($entity, $this->config->get('site_name') . "_" . $this->getEntityUID($entity), $update_mode);
 
 		return $this->directories;
 	}
@@ -334,16 +325,13 @@ class DigitaliaLtpUtils
 	 * @param $entity
 	 *   Entity which is to be ingested into archivematica
 	 *
-	 * @param $export_mode
-	 *   Sets the object export mode
-	 *
 	 * @param String $directory
 	 *   Name of base object directory
 	 *
 	 * @param $update_mode
 	 *   Indicator of deletion
 	 */
-	private function archiveSourceEntity($entity, $export_mode, String $directory, $update_mode)
+	private function archiveSourceEntity($entity, String $directory, $update_mode)
 	{
 		dpm("Preparing data...");
 
@@ -376,7 +364,7 @@ class DigitaliaLtpUtils
 		$this->filesystem->prepareDirectory($dir_metadata, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 		$this->filesystem->prepareDirectory($dir_objects, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 
-		$this->harvestMetadata($entity, $current_path, $to_encode, $export_mode, $dir_url, $update_mode);
+		$this->harvestMetadata($entity, $current_path, $to_encode, $dir_url, $update_mode);
 
 
 		$encoded = json_encode($to_encode, JSON_UNESCAPED_SLASHES);
@@ -407,16 +395,13 @@ class DigitaliaLtpUtils
 	 * @param Array $to_encode
 	 *   For appending metadata
 	 *
-	 * @param $export_mode
-	 *   Determines export mode
-	 *
 	 * @param String $dir_url
 	 *   URL of object directory, which is ingested to Archivematica
 	 *
 	 * @param $update_mode
 	 *   Indicator of deletion
 	 */
-	private function harvestMetadata($entity, String $base_path, Array &$to_encode, $export_mode, String $dir_url, $update_mode)
+	private function harvestMetadata($entity, String $base_path, Array &$to_encode, String $dir_url, $update_mode)
 	{
 		dpm("Entity type id: " . $entity->getEntityTypeId());
 		$type = $entity->getEntityTypeId();
@@ -427,8 +412,6 @@ class DigitaliaLtpUtils
 											       FileSystemInterface::MODIFY_PERMISSIONS);
 
 		if ($type == "node") {
-			$children = $this->entity_manager->getStorage('node')->loadByProperties(['field_member_of' => $entity->id()]);
-			$media = $this->entity_manager->getStorage('media')->loadByProperties(['field_media_of' => $entity->id()]);
 			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "", $update_mode);
 		}
 
@@ -444,17 +427,6 @@ class DigitaliaLtpUtils
 		if ($type == "taxonomy_vocabulary") {
 			dpm("taxonomy_vocabulary type harvesting");
 			$this->entityExtractMetadata($entity, $current_path, $to_encode, $dir_url, "", $update_mode);
-		}
-
-
-		if ($export_mode == $this::EXPORT_SEPARATE) {
-			foreach($children as $child) {
-				$this->archiveData($child, $export_mode);
-			}
-
-			foreach($media as $medium) {
-				$this->archiveData($medium, $export_mode);
-			}
 		}
 	}
 

@@ -26,29 +26,7 @@ public://archivematica/archivematica/local-devel-tkaniny_mid_3/objects/mid_3/003
 
 
 
-## Export modes
-### Separate
-This mode can be chosen using provided block
-```
-.
-├── local-devel-tkaniny_nid_229
-│   ├── metadata
-│   │   └── metadata.json
-│   └── objects
-│       └── nid_229
-│           ├── cs.txt
-│           └── en.txt
-└── local-devel-tkaniny_nid_231
-    ├── metadata
-    │   └── metadata.json
-    └── objects
-        └── nid_231
-            ├── cs.txt
-            └── en.txt
- ```
-
-
-### Single
+## Export structure
 Default mode when saving/deleting object
 ```
 .
