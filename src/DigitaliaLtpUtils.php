@@ -134,6 +134,9 @@ class DigitaliaLtpUtils
 		case "taxonomy_vocabulary":
 			$prefix = "vid";
 			break;
+		case "user":
+			$prefix = "uid";
+			break;
 		default:
 			$prefix = "default";
 			break;
@@ -375,11 +378,15 @@ class DigitaliaLtpUtils
 
 		$this->harvestMetadata($entity, $current_path, $to_encode, $export_mode, $dir_url, $update_mode);
 
+
 		$encoded = json_encode($to_encode, JSON_UNESCAPED_SLASHES);
+
 
 		dpm(json_encode($to_encode, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
 
+		# write metadata
 		$this->file_repository->writeData($encoded, $dir_url . "/" . $this::METADATA_PATH, FileSystemInterface::EXISTS_REPLACE);
+		$this->writeArclibMetadata($entity->id(), $to_encode, $dir_metadata . "/metadata.xml");
 
 		$this->removeLock($directory);
 		$this->addToQueue($directory);
@@ -486,7 +493,14 @@ class DigitaliaLtpUtils
 
 			$deleted = $update_mode == $this::UPDATE_DELETE;
 
-			$metadata = array('filename' => $filepath, 'export_language' => $lang, 'status' => $this->getEntityStatus($entity_translated), 'deleted' => $deleted);
+			$metadata = array(
+				'filename' => $filepath,
+				'id' => $entity->id(),
+				'entity_type' => $entity->getEntityTypeId(),
+				'export_language' => $lang,
+				'status' => strval($this->getEntityStatus($entity_translated)),
+				'deleted' => strval($deleted),
+			);
 
 			$entity_bundle = $entity_translated->bundle();
 
@@ -614,10 +628,10 @@ class DigitaliaLtpUtils
 	 */
 	private function startTransfer(String $directory)
 	{
-		if (!file_exists($this->config->get('base_url') . "/" . $directory . "/metadata/metadata.json")) {
-			\Drupal::logger('digitalia_ltp_adapter')->debug("No metadata.json found. Transfer aborted.");
-			return;
-		}
+		#if (!file_exists($this->config->get('base_url') . "/" . $directory . "/metadata/metadata.json")) {
+		#	\Drupal::logger('digitalia_ltp_adapter')->debug("No metadata.json found. Transfer aborted.");
+		#	return;
+		#}
 
 		\Drupal::logger('digitalia_ltp_adapter')->debug("Zipping directory $directory");
 		$zip_file = $this->zipDirectory($directory);
@@ -629,8 +643,6 @@ class DigitaliaLtpUtils
 		# save hash of zip file
 		$hash = hash_file("sha512", $pathdir . $zip_file);
 		$this->file_repository->writeData("Sha512 " . $hash, $this->config->get('base_url') . "/" . $directory . ".sums", FileSystemInterface::EXISTS_REPLACE);
-
-		dpm($hash);
 
 
 		dpm("Sending request...");
@@ -644,7 +656,7 @@ class DigitaliaLtpUtils
 		dpm($this->config->get('base_url'));
 
 		$path = "/archivematica/drupal/" . $zip_file;
-		$transfer_name = transliterator_transliterate('Any-Latin;Latin-ASCII;', $zip_file);
+		$transfer_name = transliterator_transliterate('Any-Latin;Latin-ASCII;', $zip_file . "_" . time());
 
 		$ingest_params = array('path' => base64_encode($path), 'name' => $transfer_name, 'processing_config' => 'automated', 'type' => 'zipfile');
 		try {
@@ -691,16 +703,71 @@ class DigitaliaLtpUtils
 			\RecursiveIteratorIterator::LEAVES_ONLY
 		);
 
+		# Add root directory, otherwise ARCLib fails to validate zip
+		$zip->addEmptyDir($directory);
+
 		foreach ($files as $file) {
 			if (!$file->isDir()) {
 				$file_path = $this->filesystem->realpath($file);
 				$relative_path = substr($file_path, strlen($this->filesystem->realpath($pathdir)) + 1);
-				
 				$zip->addFile($file_path, $relative_path);
+				$zip->setCompressionName($relative_path, $zip::CM_STORE);
 			}
 		}
 
+		$zip->close();
+
 		return $directory . ".zip";
+	}
+
+	private function writeArclibMetadata(String $id, Array $to_encode, String $metadata_file_path)
+	{
+		$xml = new \XMLWriter();
+		$xml->openUri($metadata_file_path);
+		$xml->startDocument("1.0", "UTF-8");
+
+		$xml->startElementNS("mets", "mets", "http://www.loc.gov/METS/");
+		$xml->writeAttribute("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
+		$xml->writeAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+		$xml->writeAttribute("xsi:schemaLocation", "http://www.loc.gov/METS/ http://www.loc.gov/standards/mets/version1121/mets.xsd");
+			$xml->startElement("mets:metsHdr");
+			$xml->writeAttribute("CREATEDATE", date("c"));
+			$xml->writeAttribute("LASTMODDATE", date("c"));
+			$xml->endElement();
+
+			$xml->startElement("mets:dmdSec");
+			$xml->writeAttribute("ID", "dmdSec_authorial_id");
+			$xml->writeAttribute("CREATED", date("c"));
+			$xml->writeAttribute("STATUS", "original");
+				$xml->startElement("mets:mdWrap");
+				$xml->writeAttribute("MDTYPE", "OTHER");
+				$xml->writeAttribute("OTHERMDTYPE", "CUSTOM");
+					$xml->startElement("mets:xmlData");
+					# authorial id for ARCLib
+					$xml->writeElement("authorial_id", $id . "_" . time());
+					$xml->endElement();
+				$xml->endElement();
+			$xml->endElement();
+
+			foreach($to_encode as $value => $section) {
+				$xml->startElement("mets:dmdSec");
+				$xml->writeAttribute("ID", "dmdSec_metadata_" . $value);
+				$xml->writeAttribute("CREATED", date("c"));
+				$xml->writeAttribute("STATUS", "original");
+					$xml->startElement("mets:mdWrap");
+					$xml->writeAttribute("MDTYPE", "OTHER");
+					$xml->writeAttribute("OTHERMDTYPE", "CUSTOM");
+						$xml->startElement("mets:xmlData");
+						foreach($section as $name => $value) {
+							$xml->writeElement($name, $value);
+						}
+						$xml->endElement();
+					$xml->endElement();
+				$xml->endElement();
+			}
+
+		$xml->endElement();
+		$xml->endDocument();
 	}
 
 
