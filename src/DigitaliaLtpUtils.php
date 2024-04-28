@@ -384,6 +384,7 @@ class DigitaliaLtpUtils
 		$this->removeLock($directory);
 		$this->addToQueue($directory);
 
+
 		dpm("Data prepared!");
 	}
 
@@ -535,7 +536,7 @@ class DigitaliaLtpUtils
 	{
 		$fid = $medium->getSource()->getSourceFieldValue($medium);
 		$file = File::load($fid);
-		$file_url = $file->createFileUrl();
+		#$file_url = $file->createFileUrl();
 		$file_uri = $file->getFileUri();
 		$this->filesystem->copy($file_uri, $dir_url . "/". $current_path . '/' . $file->getFilename(), FileSystemInterface::EXISTS_REPLACE);
 		//\Drupal::logger('digitalia_ltp_adapter')->debug();
@@ -550,7 +551,7 @@ class DigitaliaLtpUtils
 	 * @param $directory
 	 *   Object directory to be ingested
 	 */
-	public function startIngest(String $directory)
+	public function startIngestArchivematica(String $directory)
 	{
 		dpm("startIngest: start");
 		\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: start");
@@ -564,7 +565,6 @@ class DigitaliaLtpUtils
 			\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: transfer with uuid: '$transfer_uuid' completed!");
 			return;
 		}
-
 	}
 
 	/**
@@ -619,6 +619,20 @@ class DigitaliaLtpUtils
 			return;
 		}
 
+		\Drupal::logger('digitalia_ltp_adapter')->debug("Zipping directory $directory");
+		$zip_file = $this->zipDirectory($directory);
+
+		$pathdir = $this->config->get('base_url') . "/";
+		# delete source directory
+		$this->filesystem->deleteRecursive($pathdir . $directory);
+
+		# save hash of zip file
+		$hash = hash_file("sha512", $pathdir . $zip_file);
+		$this->file_repository->writeData("Sha512 " . $hash, $this->config->get('base_url') . "/" . $directory . ".sums", FileSystemInterface::EXISTS_REPLACE);
+
+		dpm($hash);
+
+
 		dpm("Sending request...");
 
 		$am_host = $this->config->get('am_host');
@@ -627,10 +641,12 @@ class DigitaliaLtpUtils
 
 		$client = \Drupal::httpClient();
 
-		$path = "/archivematica/" . $directory;
-		$transfer_name = transliterator_transliterate('Any-Latin;Latin-ASCII;', $directory);
+		dpm($this->config->get('base_url'));
 
-		$ingest_params = array('path' => base64_encode($path), 'name' => $transfer_name, 'processing_config' => 'automated', 'type' => 'standard');
+		$path = "/archivematica/drupal/" . $zip_file;
+		$transfer_name = transliterator_transliterate('Any-Latin;Latin-ASCII;', $zip_file);
+
+		$ingest_params = array('path' => base64_encode($path), 'name' => $transfer_name, 'processing_config' => 'automated', 'type' => 'zipfile');
 		try {
 			$response = $client->request('POST', $am_host . '/api/v2beta/package', ['headers' => ['Authorization' => 'ApiKey ' . $username . ":" . $password, 'ContentType' => 'application/json'], 'body' => json_encode($ingest_params)]);
 			return json_decode($response->getBody()->getContents(), TRUE)["id"];
@@ -639,7 +655,6 @@ class DigitaliaLtpUtils
 			\Drupal::logger('digitalia_ltp_adapter')->debug("waitForTransferCompletion: " . $e->getMessage());
 			return false;
 		}
-		dpm("Request sent");
 	}
 
 
@@ -655,6 +670,37 @@ class DigitaliaLtpUtils
 		$filepath = $this->config->get('base_url') . "/" . $filename;
 
 		$this->filesystem->deleteRecursive($filepath);
+	}
+
+	private function zipDirectory(String $directory)
+	{
+		$pathdir = $this->config->get('base_url') . "/";
+		$zip_file = $directory . ".zip";
+
+		# zip file must exist
+		fopen($this->filesystem->realpath($pathdir . $zip_file), "w");
+
+		dpm($pathdir);
+		dpm($zip_file);
+		dpm($this->filesystem->realpath($pathdir));
+
+		$zip = \Drupal::service('plugin.manager.archiver')->getInstance(['filepath' => $pathdir . $zip_file])->getArchive();
+
+		$files = new \RecursiveIteratorIterator(
+			new \RecursiveDirectoryIterator($pathdir . $directory),
+			\RecursiveIteratorIterator::LEAVES_ONLY
+		);
+
+		foreach ($files as $file) {
+			if (!$file->isDir()) {
+				$file_path = $this->filesystem->realpath($file);
+				$relative_path = substr($file_path, strlen($this->filesystem->realpath($pathdir)) + 1);
+				
+				$zip->addFile($file_path, $relative_path);
+			}
+		}
+
+		return $directory . ".zip";
 	}
 
 
