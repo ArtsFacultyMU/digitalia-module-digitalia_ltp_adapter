@@ -16,16 +16,7 @@ function digitalia_ltp_adapter_entity_presave(EntityInterface $entity)
 	$utils = new DigitaliaLtpUtils();
 	//dpm(print_r($utils->getEnabledContentTypes(), true));
 
-	$is_valid_type = false;
-
-	foreach ($utils->getEnabledContentTypes() as $type => $_value) {
-		if ($entity->bundle() == $type) {
-			$is_valid_type = true;
-			break;
-		}
-	}
-
-	if (!$is_valid_type) {
+	if (!$utils->getEnabledContentTypes()[$entity->bundle()]) {
 		return;
 	}
 
@@ -58,6 +49,11 @@ function digitalia_ltp_adapter_entity_predelete(EntityInterface $entity)
 	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
 
 	$utils = new DigitaliaLtpUtils();
+
+	if (!$utils->getEnabledContentTypes()[$entity->bundle()]) {
+		return;
+	}
+
 	$utils->updateEntity($entity, $utils::UPDATE_DELETE);
 }
 
