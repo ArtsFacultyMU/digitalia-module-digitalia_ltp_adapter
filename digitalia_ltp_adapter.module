@@ -6,37 +6,48 @@ use Drupal\node\Entity\Node;
 
 
 /**
- * Transfer published objects to Archivematica
+ * Transfer published objects to LTP system
  *
- * implements hook_entity_update()
+ * implements hook_entity_presave()
  */
-function digitalia_ltp_adapter_entity_update(EntityInterface $entity)
+function digitalia_ltp_adapter_entity_presave(EntityInterface $entity)
 {
+
+	$utils = new DigitaliaLtpUtils();
+	//dpm(print_r($utils->getEnabledContentTypes(), true));
+
+	$is_valid_type = false;
+
+	foreach ($utils->getEnabledContentTypes() as $type => $_value) {
+		if ($entity->bundle() == $type) {
+			$is_valid_type = true;
+			break;
+		}
+	}
+
+	if (!$is_valid_type) {
+		return;
+	}
+
 	dpm("Entity update hook");
 	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity update hook");
 	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
 
-	$utils = new DigitaliaLtpUtils();
+	// Don't archive when writing last transfer uuid
+	$transfer_uuid = $utils->getEntityField($entity, 'field_transfer_uuid');
+	dpm("current transfer_uuid: " . $transfer_uuid);
+	if (strpos($transfer_uuid, "SAVE_") !== false) {
+		$clean_uuid = substr($transfer_uuid, strlen("SAVE_"));
+		dpm("clean transfer_uuid: " . $clean_uuid);
+		$entity->set('field_transfer_uuid', $clean_uuid);
+		return;
+	}
+
 	$utils->updateEntity($entity, $utils::UPDATE_CREATE);
 }
 
 /**
- * Transfer published objects to Archivematica
- *
- * implements hook_entity_insert()
- */
-function digitalia_ltp_adapter_entity_insert(EntityInterface $entity)
-{
-	dpm("Entity insesrt hook");
-	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity insert hook");
-	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
-
-	$utils = new DigitaliaLtpUtils();
-	$utils->updateEntity($entity, $utils::UPDATE_CREATE);
-}
-
-/**
- * Transfer deleted objects to Archivematica and mark them as deleted
+ * Transfer deleted objects to LTP system and mark them as deleted
  *
  * implements hook_entity_predelete()
  */

@@ -38,17 +38,29 @@ class ExportQueue extends QueueWorkerBase
 		\Drupal::logger('digitalia_ltp_adapter')->debug("Processing item from queue");
 
 		$utils = new DigitaliaLtpUtils();
-		#if (!$utils->checkAndLock($queue_item, 2, 120)) {
-		#	\Drupal::logger('digitalia_ltp_adapter')->debug("Couldn't obtain lock for directory '$directory', queue processing");
-		#	return;
-		#}
 
-		$utils->startIngestArchivematica($queue_item);
-		#$utils->startIngestArclib($queue_item);
-		#$utils->startIngest($queue_item);
-		#$utils->removeLock($queue_item);
+		if (!$utils->checkAndLock($queue_item, 2, 120)) {
+			\Drupal::logger('digitalia_ltp_adapter')->debug("Couldn't obtain lock for directory '$directory', queue processing");
+			return;
+		}
+
+		dpm(print_r($queue_item, TRUE));
+
+		$entity = \Drupal::entityTypeManager()->getStorage($queue_item['entity_type'])->loadByProperties(['uuid' => $queue_item['uuid']]);
+		$entity = reset($entity);
+
+		dpm("entity id: " . $entity->id());
+		dpm("entity uuid: " . $entity->uuid());
+
+		$transfer_uuid = $utils->startIngestArchivematica($queue_item['directory']);
+
+		if ($queue_item['field_transfer_name']) {
+			$entity->set($queue_item['field_transfer_name'], "SAVE_" . $transfer_uuid);
+			$entity->save();
+		}
+
+		// unlocking not necessary, source directory is deleted
 
 		\Drupal::logger('digitalia_ltp_adapter')->debug("Item from queue processed");
 	}
-
 }

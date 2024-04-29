@@ -143,14 +143,14 @@ class DigitaliaLtpUtils
 	/**
 	 * Adds a directory to ingest queue
 	 *
-	 * @param String $directory
-	 *   Name of directory to be ingested
+	 * @param Array $directory
+	 *   Array with name, entity type and entity uuid
 	 */
-	public function addToQueue(String $directory)
+	public function addToQueue(Array $directory)
 	{
 		$queue = \Drupal::service('queue')->get('digitalia_ltp_adapter_export_queue');
 		if (!$queue->createItem($directory)) {
-			\Drupal::logger('digitalia_ltp_adapter')->error("Object '" . $directory . "'couldn't be added to queue.");
+			\Drupal::logger('digitalia_ltp_adapter')->error("Object '" . $directory['directory'] . "'couldn't be added to queue.");
 		}
 	}
 
@@ -254,22 +254,30 @@ class DigitaliaLtpUtils
 	 * @param $entity
 	 *  Drupal entity
 	 *
-	 * @return bool
 	 */
-	public function getEntityStatus($entity)
+	public function getEntityField($entity, String $field)
 	{
 		// TODO: decide if language variants of an entity are separate entities
-		$status = $entity->get("status");
-		$published = false;
+		dpm("field: " . $field);
+		dpm("entity type: " . $entity->bundle());
+		$value = false;
+		try {
+			$status = $entity->get($field);
+		} catch (\Exception $e) {
+			dpm($e->getMessage());
+			return $value;
+		}
+		//dpm("boolean value: " . print_r($status, TRUE));
 
 		// Untranslated entities store bool, translated entities are more complex
 		if (is_bool($status)) {
-			$published = $status;
+			$value = $status;
 		} else {
-			$published = $status->getValue()[0]['value'];
+			dpm("not bool");
+			$value = $status->getValue()[0]['value'];
 		}
 
-		return $published;
+		return $value;
 	}
 
 	/**
@@ -289,7 +297,7 @@ class DigitaliaLtpUtils
 		}
 
 		if ($this->getEnabledContentTypes()[$entity->bundle()]) {
-			if ($this->getEntityStatus($entity)) {
+			if ($this->getEntityField($entity, "status")) {
 				$this->archiveData($entity, $update_mode);
 			}
 		}
@@ -377,7 +385,14 @@ class DigitaliaLtpUtils
 		$this->writeArclibMetadata($entity->id(), $to_encode, $dir_metadata . "/metadata.xml");
 
 		$this->removeLock($directory);
-		$this->addToQueue($directory);
+
+
+		$this->addToQueue(array(
+			'directory' => $directory,
+			'entity_type' => $entity->getEntityTypeId(),
+			'uuid' => $entity->uuid(),
+			'field_transfer_name' => $this->config->get("field_transfer"),
+		));
 
 
 		dpm("Data prepared!");
@@ -468,9 +483,10 @@ class DigitaliaLtpUtils
 			$metadata = array(
 				'filename' => $filepath,
 				'id' => $entity->id(),
+				'uuid' => $entity->uuid(),
 				'entity_type' => $entity->getEntityTypeId(),
 				'export_language' => $lang,
-				'status' => strval($this->getEntityStatus($entity_translated)),
+				'status' => strval($this->getEntityField($entity_translated, "status")),
 				'deleted' => strval($deleted),
 			);
 
@@ -549,7 +565,7 @@ class DigitaliaLtpUtils
 			$this->waitForTransferCompletion($transfer_uuid);
 			dpm("startIngest: transfer completed!");
 			\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: transfer with uuid: '$transfer_uuid' completed!");
-			return;
+			return $transfer_uuid;
 		}
 	}
 
@@ -682,8 +698,12 @@ class DigitaliaLtpUtils
 			if (!$file->isDir()) {
 				$file_path = $this->filesystem->realpath($file);
 				$relative_path = substr($file_path, strlen($this->filesystem->realpath($pathdir)) + 1);
+
+				if ($relative_path == $directory . "/lock") {
+					continue;
+				}
+
 				$zip->addFile($file_path, $relative_path);
-				$zip->setCompressionName($relative_path, $zip::CM_STORE);
 			}
 		}
 

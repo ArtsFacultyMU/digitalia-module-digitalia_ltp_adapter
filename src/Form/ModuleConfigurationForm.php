@@ -71,6 +71,13 @@ class ModuleConfigurationForm extends ConfigFormBase
 			'#default_value' => $config->get('site_name'),
 		];
 
+		$form['transfer_field'] = [
+			'#type' => 'textfield',
+			'#title' => 'Transfer field',
+			'#description' => 'Holds uuid of last transfer',
+			'#default_value' => $config->get('transfer_field'),
+		];
+
 		$form['field_configuration'] = [
 			'#type' => 'textarea',
 			'#size' => '60',
@@ -104,6 +111,7 @@ class ModuleConfigurationForm extends ConfigFormBase
 		$this->config('digitalia_ltp_adapter.admin_settings')->set('api_key_password', $form_state->getValue('api_key_password'))->save();
 		$this->config('digitalia_ltp_adapter.admin_settings')->set('base_url', $form_state->getValue('base_url'))->save();
 		$this->config('digitalia_ltp_adapter.admin_settings')->set('site_name', $form_state->getValue('site_name'))->save();
+		$this->config('digitalia_ltp_adapter.admin_settings')->set('transfer_field', $form_state->getValue('transfer_field'))->save();
 		$this->config('digitalia_ltp_adapter.admin_settings')->set('field_configuration', $form_state->getValue('field_configuration'))->save();
 		$this->config('digitalia_ltp_adapter.admin_settings')->set('auto_generate_switch', $form_state->getValue('auto_generate_switch'))->save();
 
