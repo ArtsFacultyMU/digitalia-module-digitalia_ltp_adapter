@@ -5,3 +5,11 @@ digitalia_ltp_adapter.admin_settings:
     _title: 'Digitalia LTP Adapter settings'
   requirements:
     _permission: 'administer site configuration'
+
+digitalia_ltp_adapter.admin_settings_archivematica:
+  path: '/admin/config/system/digitalia_ltp_adapter/archivematica'
+  defaults:
+    _form: '\Drupal\digitalia_ltp_adapter\Form\ArchivematicaConfigurationForm'
+    _title: 'Archivematica settings'
+  requirements:
+    _permission: 'administer site configuration'

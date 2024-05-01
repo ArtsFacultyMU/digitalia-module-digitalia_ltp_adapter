@@ -5,6 +5,14 @@ digitalia_ltp_adapter.admin_settings:
     test_field:
       type: text
       label: 'Test field'
+    base_url:
+      type: string
+      label: 'URL of directory shared with Archivematica'
+
+digitalia_ltp_adapter.archivematica_settings:
+  type: config_object
+  label: 'Archivematica LTP Adapter config'
+  mapping:
     am_host:
       type: string
       label: 'Archivematica host URL'

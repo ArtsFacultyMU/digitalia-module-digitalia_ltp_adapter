@@ -24,13 +24,27 @@ function digitalia_ltp_adapter_entity_presave(EntityInterface $entity)
 	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity update hook");
 	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
 
+
 	// Don't archive when writing last transfer uuid
-	$transfer_uuid = $utils->getEntityField($entity, 'field_transfer_uuid');
-	dpm("current transfer_uuid: " . $transfer_uuid);
+	$transfer_field_name = $utils->getConfig()->get('transfer_field');
+	$sip_field_name = $utils->getConfig()->get('sip_field');
+	$transfer_uuid = $utils->getEntityField($entity, $transfer_field_name);
+	$sip_uuid = $utils->getEntityField($entity, $sip_field_name);
+
+	//dpm("transfer uuid:" . print_r($transfer_uuid, TRUE));
+	//dpm("sip uuid: " . print_r($sip_uuid, TRUE));
+
 	if (strpos($transfer_uuid, "SAVE_") !== false) {
 		$clean_uuid = substr($transfer_uuid, strlen("SAVE_"));
 		dpm("clean transfer_uuid: " . $clean_uuid);
-		$entity->set('field_transfer_uuid', $clean_uuid);
+		$entity->set($transfer_field_name, $clean_uuid);
+		return;
+	}
+
+	if (strpos($sip_uuid, "SAVE_") !== false) {
+		$clean_uuid = substr($sip_uuid, strlen("SAVE_"));
+		dpm("clean sip_uuid: " . $clean_uuid);
+		$entity->set($sip_field_name, $clean_uuid);
 		return;
 	}
 

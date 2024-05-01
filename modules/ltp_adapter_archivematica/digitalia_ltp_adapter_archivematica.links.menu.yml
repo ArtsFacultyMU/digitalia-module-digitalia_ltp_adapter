@@ -1,0 +1,5 @@
+digitalia_ltp_adapter_archivematica.config:
+  title: "Archivematica"
+  description: "Configure Archivematica LTP adapter settings"
+  route_name: digitalia_ltp_adapter_archivematica.settings
+  parent: digitalia_ltp_adapter.admin_settings

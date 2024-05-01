@@ -5,6 +5,8 @@ namespace Drupal\digitalia_ltp_adapter\Plugin\QueueWorker;
 use Drupal\Core\Annotation\QueueWorker;
 use Drupal\Core\Queue\QueueWorkerBase;
 use Drupal\digitalia_ltp_adapter\DigitaliaLtpUtils;
+use Drupal\digitalia_ltp_adapter\FileUtils;
+use Drupal\digitalia_ltp_adapter\LtpSystemArchivematica;
 
 /**
  * Export Queue Worker
@@ -38,28 +40,37 @@ class ExportQueue extends QueueWorkerBase
 		\Drupal::logger('digitalia_ltp_adapter')->debug("Processing item from queue");
 
 		$utils = new DigitaliaLtpUtils();
+		$fileutils = new FileUtils();
+		$ltp_system = new LtpSystemArchivematica($queue_item["directory"]);
+		$dirpath = $ltp_system->getBaseUrl() . "/" . $queue_item["directory"];
 
-		if (!$utils->checkAndLock($queue_item, 2, 120)) {
-			\Drupal::logger('digitalia_ltp_adapter')->debug("Couldn't obtain lock for directory '$directory', queue processing");
+		if (!$fileutils->checkAndLock($dirpath, 2, 120)) {
+			\Drupal::logger('digitalia_ltp_adapter')->debug("Couldn't obtain lock for directory '" . $dirpath . "', aborting.");
 			return;
 		}
 
-		dpm(print_r($queue_item, TRUE));
+		try {
+			$entity = \Drupal::entityTypeManager()->getStorage($queue_item['entity_type'])->loadByProperties(['uuid' => $queue_item['uuid']]);
+			$entity = reset($entity);
 
-		$entity = \Drupal::entityTypeManager()->getStorage($queue_item['entity_type'])->loadByProperties(['uuid' => $queue_item['uuid']]);
-		$entity = reset($entity);
+			$uuids = $ltp_system->startIngest();
 
-		dpm("entity id: " . $entity->id());
-		dpm("entity uuid: " . $entity->uuid());
+			if ($queue_item['field_transfer_name'] != "") {
+				$entity->set($queue_item['field_transfer_name'], "SAVE_" . $uuids['transfer_uuid']);
+				$entity->save();
+			}
 
-		$transfer_uuid = $utils->startIngestArchivematica($queue_item['directory']);
+			if ($queue_item['field_sip_name'] != "") {
+				$entity->set($queue_item['field_sip_name'], "SAVE_" . $uuids['sip_uuid']);
+				$entity->save();
+			}
 
-		if ($queue_item['field_transfer_name']) {
-			$entity->set($queue_item['field_transfer_name'], "SAVE_" . $transfer_uuid);
-			$entity->save();
+		} catch (\Exception $e) {
+			// unlocking only on failure, source directory is deleted otherwise
+			\Drupal::logger('digitalia_ltp_adapter')->error($e->getMessage());
+			$fileutils->removeLock($dirpath);
+			return;
 		}
-
-		// unlocking not necessary, source directory is deleted
 
 		\Drupal::logger('digitalia_ltp_adapter')->debug("Item from queue processed");
 	}
