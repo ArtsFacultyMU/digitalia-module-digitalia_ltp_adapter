@@ -72,6 +72,7 @@ class FileUtils
 		return file_exists($dirpath . "/lock");
 	}
 
+	// TODO: do it properly, not with EXISTS_REPLACE, we need to go deeper?
 	private function addLock(String $dirpath)
 	{
 		$this->file_repository->writeData("", $dirpath . "/lock", FileSystemInterface::EXISTS_REPLACE);

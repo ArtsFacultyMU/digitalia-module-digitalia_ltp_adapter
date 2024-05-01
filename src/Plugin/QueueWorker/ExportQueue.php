@@ -6,7 +6,7 @@ use Drupal\Core\Annotation\QueueWorker;
 use Drupal\Core\Queue\QueueWorkerBase;
 use Drupal\digitalia_ltp_adapter\DigitaliaLtpUtils;
 use Drupal\digitalia_ltp_adapter\FileUtils;
-use Drupal\digitalia_ltp_adapter\LtpSystemArchivematica;
+use Drupal\digitalia_ltp_adapter\LtpSystemInterface;
 
 /**
  * Export Queue Worker
@@ -41,7 +41,9 @@ class ExportQueue extends QueueWorkerBase
 
 		$utils = new DigitaliaLtpUtils();
 		$fileutils = new FileUtils();
-		$ltp_system = new LtpSystemArchivematica($queue_item["directory"]);
+
+		$ltp_system = \Drupal::service($utils->config->get("enabled_ltp_systems"));
+		$ltp_system->setDirectory($queue_item["directory"]);
 		$dirpath = $ltp_system->getBaseUrl() . "/" . $queue_item["directory"];
 
 		if (!$fileutils->checkAndLock($dirpath, 2, 120)) {

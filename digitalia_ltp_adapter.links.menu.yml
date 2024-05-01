@@ -3,9 +3,3 @@ digitalia_ltp_adapter.config:
   description: "Configure base LTP adapter settings"
   route_name: digitalia_ltp_adapter.admin_settings
   parent: system.admin_config_development
-
-digitalia_ltp_adapter.config_archivematica:
-  title: "Archivematica"
-  description: "Configure Archivematica LTP adapter settings"
-  route_name: digitalia_ltp_adapter.admin_settings_archivematica
-  parent: digitalia_ltp_adapter.admin_settings

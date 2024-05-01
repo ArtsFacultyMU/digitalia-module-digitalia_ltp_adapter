@@ -11,4 +11,8 @@ interface LtpSystemInterface
 	 *   Object directory to be ingested
 	 */
 	public function startIngest();
+
+	public function getName();
+
+	public function setDirectory(String $directory);
 }

@@ -11,7 +11,7 @@ use Drupal\Core\File\FileSystem;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Drupal\digitalia_ltp_adapter\FileUtils;
-use Drupal\digitalia_ltp_adapter\LtpSystemArchivematica;
+//use Drupal\digitalia_ltp_adapter\LtpSystemArchivematica;
 
 
 class DigitaliaLtpUtils
@@ -226,6 +226,11 @@ class DigitaliaLtpUtils
 		//return $translated->get($field)->getValue();
 	}
 
+	public function getEnabledLtpSystem()
+	{
+		return $this->getConfig()->get["enabled_ltp_systems"];
+	}
+
 	/**
 	 * Tries to create/update entity and transfer it into Archivematica
 	 *
@@ -274,23 +279,37 @@ class DigitaliaLtpUtils
 		dpm("Preparing data...");
 
 		\Drupal::logger('digitalia_ltp_adapter')->debug("Preparing sip");
-		//$ltp_system = new LtpSystemArchivematica($directory);
 
-		//$dirpath = $ltp_system->getBaseUrl() . "/" . $directory;
+		//foreach ($this->config as $conf) {
+		//	dpm(print_r($conf, TRUE));
+		//}
+
+		$system_service_name = $this->config->get('enabled_ltp_systems');
+		dpm("enabled system: '" . $system_service_name . "'");
+		$ltp_system = \Drupal::service($system_service_name);
+
+		if (is_null($ltp_system)) {
+			dpm("Please enable at least one LTP system.");
+			return;
+		}
+
+		$ltp_system->setDirectory($directory);
+
+		$dirpath = $ltp_system->getBaseUrl() . "/" . $directory;
 
 
-		//$to_encode = array();
-		//$current_path = "objects";
+		$to_encode = array();
+		$current_path = "objects";
 
-		//$dir_metadata = $dirpath . "/metadata";
-		//$dir_objects = $dirpath . "/objects";
+		$dir_metadata = $dirpath . "/metadata";
+		$dir_objects = $dirpath . "/objects";
 
 
-		//$this->harvestMetadata($entity, $current_path, $to_encode, $dirpath, $update_mode);
+		$this->harvestMetadata($entity, $current_path, $to_encode, $dirpath, $update_mode);
 
-		//dpm(json_encode($to_encode, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+		dpm(json_encode($to_encode, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
 
-		//$ltp_system->writeSIP($entity, $to_encode, $this->file_uri, $this->dummy_filepaths);
+		$ltp_system->writeSIP($entity, $to_encode, $this->file_uri, $this->dummy_filepaths);
 
 
 
@@ -355,14 +374,6 @@ class DigitaliaLtpUtils
 				continue;
 			}
 			$entity_translated = \Drupal::service('entity.repository')->getTranslationFromContext($entity, $lang);
-
-			// Archivematica requires metadata to belong to a file, use dummy files
-			//if (!$filename) {
-			//	$filepath = $current_path . "/" . $lang . ".txt";
-			//	array_push($this->dummy_filepaths, $filepath);
-			//} else {
-			//	$filepath = $current_path . "/" . $filename;
-			//}
 
 			$deleted = $update_mode == $this::UPDATE_DELETE;
 
@@ -469,12 +480,6 @@ class DigitaliaLtpUtils
 		$zip->close();
 
 		return $directory . ".zip";
-	}
-
-	private function writeArchivematicaMetadata(Array $to_encode, String $metadata_file_path)
-	{
-		$encoded = json_encode($to_encode, JSON_UNESCAPED_SLASHES);
-		$this->file_repository->writeData($encoded, $metadata_file_path, FileSystemInterface::EXISTS_REPLACE);
 	}
 
 	private function writeArclibMetadata(String $id, Array $to_encode, String $metadata_file_path)
