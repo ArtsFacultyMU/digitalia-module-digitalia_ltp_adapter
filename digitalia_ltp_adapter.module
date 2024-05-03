@@ -46,17 +46,20 @@ function digitalia_ltp_adapter_entity_presave(EntityInterface $entity)
  */
 function digitalia_ltp_adapter_entity_predelete(EntityInterface $entity)
 {
-	dpm("Entity predelete hook");
-	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity predelete hook");
-	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
-
-	$utils = new DigitaliaLtpUtils();
+	$utils = new Utils();
+	//dpm(print_r($utils->getEnabledContentTypes(), true));
 
 	if (!$utils->getEnabledContentTypes()[$entity->bundle()]) {
 		return;
 	}
 
-	$utils->updateEntity($entity, $utils::UPDATE_DELETE);
+	dpm("Entity predelete hook");
+	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity predelete hook");
+	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
+
+
+	$extractor = new MetadataExtractor();
+	$extractor->updateEntity($entity, $extractor::UPDATE_DELETE);
 }
 
 /**

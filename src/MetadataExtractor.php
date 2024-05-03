@@ -181,7 +181,7 @@ class MetadataExtractor
 				'uuid' => $entity->uuid(),
 				'entity_type' => $entity->getEntityTypeId(),
 				'export_language' => $lang,
-				'status' => strval($entity_translated->get("status")->getValue()),
+				'status' => strval($this->utils->getEntityField($entity, "status")),
 				'deleted' => strval($deleted),
 			);
 
