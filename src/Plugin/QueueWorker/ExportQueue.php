@@ -4,8 +4,7 @@ namespace Drupal\digitalia_ltp_adapter\Plugin\QueueWorker;
 
 use Drupal\Core\Annotation\QueueWorker;
 use Drupal\Core\Queue\QueueWorkerBase;
-use Drupal\digitalia_ltp_adapter\DigitaliaLtpUtils;
-use Drupal\digitalia_ltp_adapter\FileUtils;
+use Drupal\digitalia_ltp_adapter\Utils;
 use Drupal\digitalia_ltp_adapter\LtpSystemInterface;
 
 /**
@@ -39,14 +38,13 @@ class ExportQueue extends QueueWorkerBase
 	{
 		\Drupal::logger('digitalia_ltp_adapter')->debug("Processing item from queue");
 
-		$utils = new DigitaliaLtpUtils();
-		$fileutils = new FileUtils();
+		$utils = new Utils();
 
-		$ltp_system = \Drupal::service($utils->config->get("enabled_ltp_systems"));
+		$ltp_system = \Drupal::service($utils->getConfig()->get("enabled_ltp_systems"));
 		$ltp_system->setDirectory($queue_item["directory"]);
 		$dirpath = $ltp_system->getBaseUrl() . "/" . $queue_item["directory"];
 
-		if (!$fileutils->checkAndLock($dirpath, 2, 120)) {
+		if (!$utils->checkAndLock($dirpath, 2, 120)) {
 			\Drupal::logger('digitalia_ltp_adapter')->debug("Couldn't obtain lock for directory '" . $dirpath . "', aborting.");
 			return;
 		}
@@ -55,22 +53,26 @@ class ExportQueue extends QueueWorkerBase
 			$entity = \Drupal::entityTypeManager()->getStorage($queue_item['entity_type'])->loadByProperties(['uuid' => $queue_item['uuid']]);
 			$entity = reset($entity);
 
-			$uuids = $ltp_system->startIngest();
+			$writeback = $ltp_system->startIngest();
 
-			if ($queue_item['field_transfer_name'] != "") {
-				$entity->set($queue_item['field_transfer_name'], "SAVE_" . $uuids['transfer_uuid']);
+			$fields_written_to = false;
+			foreach ($queue_item['fields'] as $id => $field_name) {
+				if ($entity->get($field_name) != "") {
+					$entity->set($field_name, "SAVE_" . $writeback[$id]);
+					$fields_written_to = true;
+				}
+
+			}
+
+			if ($fields_written_to) {
 				$entity->save();
 			}
 
-			if ($queue_item['field_sip_name'] != "") {
-				$entity->set($queue_item['field_sip_name'], "SAVE_" . $uuids['sip_uuid']);
-				$entity->save();
-			}
 
 		} catch (\Exception $e) {
 			// unlocking only on failure, source directory is deleted otherwise
 			\Drupal::logger('digitalia_ltp_adapter')->error($e->getMessage());
-			$fileutils->removeLock($dirpath);
+			$utils->removeLock($dirpath);
 			return;
 		}
 

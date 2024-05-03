@@ -1,0 +1,3 @@
+services:
+  digitalia_ltp_adapter.ltp_system.archivematica:
+    class: Drupal\digitalia_ltp_adapter_archivematica\LtpSystemArchivematica

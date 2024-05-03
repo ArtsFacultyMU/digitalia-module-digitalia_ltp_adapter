@@ -1,10 +1,12 @@
 <?php
 
-namespace Drupal\digitalia_ltp_adapter;
+namespace Drupal\digitalia_ltp_adapter_archivematica;
 
 use Drupal\Core\File\FileSystemInterface;
 use Drupal\Core\File\FileSystem;
 use Drupal\digitalia_ltp_adapter\LtpSystemInterface;
+use Drupal\digitalia_ltp_adapter\Utils;
+use Drupal\digitalia_ltp_adapter\MetadataExtractor;
 
 class LtpSystemArchivematica implements LtpSystemInterface
 {
@@ -16,14 +18,13 @@ class LtpSystemArchivematica implements LtpSystemInterface
 	private $directory;
 
 
-	public function __construct(String $directory)
+	public function __construct()
 	{
-		$this->config = \Drupal::config('digitalia_ltp_adapter.archivematica_settings');
+		$this->config = \Drupal::config('digitalia_ltp_adapter_archivematica.settings');
 		$this->host = $this->config->get('am_host');
 		$this->username = $this->config->get('api_key_username');
 		$this->password = $this->config->get('api_key_password');
 		$this->base_url = $this->config->get('base_url');
-		$this->directory = $directory;
 	}
 
 	public function getBaseUrl()
@@ -36,25 +37,34 @@ class LtpSystemArchivematica implements LtpSystemInterface
 		return $this->directory;
 	}
 
+	public function getName()
+	{
+		return "Archivematica";
+	}
+
+	public function setDirectory(String $directory)
+	{
+		$this->directory = $directory;
+	}
+
 	public function writeSIP($entity, Array $metadata, Array $file_uri, Array $dummy_filepaths)
 	{
-		$fileutils = new FileUtils();
-		$utils = new DigitaliaLtpUtils();
+		$utils = new Utils();
 		$dirpath = $this->getBaseUrl() . "/" . $this->getDirectory();
 
 		$filesystem = \Drupal::service('file_system');
 		$file_repository = \Drupal::service('file.repository');
 
-		if (!$fileutils->checkAndLock($dirpath)) {
-			\Drupal::logger('digitalia_ltp_adapter')->debug("Couldn't obtain lock for directory '$directory', pre cleanup");
+		if (!$utils->checkAndLock($dirpath)) {
+			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("Couldn't obtain lock for directory '$directory', pre cleanup");
 			return;
 		}
 
 		$utils->removeFromQueue($this->getDirectory());
 		$utils->preExportCleanup($entity, $this->getBaseUrl());
 
-		if (!$fileutils->checkAndLock($dirpath)) {
-			\Drupal::logger('digitalia_ltp_adapter')->debug("Couldn't obtain lock for directory '$directory', post cleanup");
+		if (!$utils->checkAndLock($dirpath)) {
+			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("Couldn't obtain lock for directory '$directory', post cleanup");
 			return;
 		}
 
@@ -99,21 +109,23 @@ class LtpSystemArchivematica implements LtpSystemInterface
 			}
 
 
-			$fileutils->removeLock($dirpath);
+			$utils->removeLock($dirpath);
 
 		} catch (\Exception $e) {
-			\Drupal::logger('digitalia_ltp_adapter')->error($e->getMessage());
-			$fileutils->removeLock($dirpath);
+			\Drupal::logger('digitalia_ltp_adapter_archivematica')->error($e->getMessage());
+			$utils->removeLock($dirpath);
 			return;
 		}
 
+		// TODO: make an array with all fields to be written back
 		$utils->addToQueue(array(
 			'directory' => $this->getDirectory(),
 			'entity_type' => $entity->getEntityTypeId(),
 			'uuid' => $entity->uuid(),
-			'field_transfer_name' => $this->config->get("transfer_field"),
-			'field_sip_name' => $this->config->get("sip_field"),
-			'ltp_system' => 'am',
+			'fields' => [
+				'transfer_uuid' => $this->config->get("transfer_field"),
+				'sip_uuid' => $this->config->get("sip_field"),
+			],
 		));
 	}
 
@@ -127,18 +139,22 @@ class LtpSystemArchivematica implements LtpSystemInterface
 	public function startIngest()
 	{
 		dpm("startIngest: start");
-		\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: start");
+		\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: start");
 
 		$transfer_uuid = $this->startTransfer($this->getBaseUrl());
 
 		if ($transfer_uuid) {
-			\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: transfer with uuid: '$transfer_uuid' started!");
+			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: transfer with uuid: '$transfer_uuid' started!");
 			$this->waitForTransferCompletion($transfer_uuid);
 			$sip_uuid = $this->waitForIngestCompletion($transfer_uuid);
 			//dpm("sip_uuid: ". $sip_uuid);
 			//dpm("startIngest: transfer completed!");
-			\Drupal::logger('digitalia_ltp_adapter')->debug("startIngest: transfer with uuid: '$transfer_uuid' completed!");
-			$result = ['transfer_uuid' => $transfer_uuid, 'sip_uuid' => $sip_uuid];
+			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: transfer with uuid: '$transfer_uuid' completed!");
+			$result = [
+				'transfer_uuid' => $transfer_uuid,
+				'sip_uuid' => $sip_uuid,
+			];
+
 			dpm(print_r($result, TRUE));
 			return $result;
 		}
@@ -158,7 +174,7 @@ class LtpSystemArchivematica implements LtpSystemInterface
 		$client = \Drupal::httpClient();
 
 		while ($status != "COMPLETE") {
-			\Drupal::logger('digitalia_ltp_adapter')->debug("waitForTransferCompletion: loop started");
+			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: loop started");
 			sleep(1);
 			try {
 				$response = $client->request(
@@ -172,7 +188,7 @@ class LtpSystemArchivematica implements LtpSystemInterface
 				);
 
 				$status = json_decode($response->getBody()->getContents(), TRUE)["status"];
-				\Drupal::logger('digitalia_ltp_adapter')->debug("waitForTransferCompletion: status = " . $status);
+				\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: status = " . $status);
 
 			} catch (\Exception $e) {
 				dpm($e->getMessage());
@@ -180,11 +196,11 @@ class LtpSystemArchivematica implements LtpSystemInterface
 			}
 
 			if ($status == "FAILED" || $status == "REJECTED" || $status == "USER_INPUT") {
-				\Drupal::logger('digitalia_ltp_adapter')->debug("waitForTransferCompletion: status = " . $status);
+				\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: status = " . $status);
 			}
 		}
 
-		\Drupal::logger('digitalia_ltp_adapter')->debug("waitForTransferCompletion: transfer completed");
+		\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: transfer completed");
 
 	}
 
@@ -223,17 +239,17 @@ class LtpSystemArchivematica implements LtpSystemInterface
 	{
 		$dirpath = $this->getBaseUrl(). "/" . $this->getDirectory();
 		if (!file_exists($dirpath . "/metadata/metadata.json")) {
-			\Drupal::logger('digitalia_ltp_adapter')->debug("No metadata.json found. Transfer aborted.");
+			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("No metadata.json found. Transfer aborted.");
 			return;
 		}
 
-		$utils = new DigitaliaLtpUtils();
+		$utils = new Utils();
 
-		\Drupal::logger('digitalia_ltp_adapter')->debug("Zipping directory $dirpath");
+		\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("Zipping directory $dirpath");
 		$zip_file = $utils->zipDirectory($this->getBaseUrl(), $this->getDirectory());
 
 		// delete source directory
-		$utils->filesystem->deleteRecursive($dirpath);
+		\Drupal::service('file_system')->deleteRecursive($dirpath);
 
 
 		dpm("Sending request...");
@@ -265,9 +281,40 @@ class LtpSystemArchivematica implements LtpSystemInterface
 			return json_decode($response->getBody()->getContents(), TRUE)["id"];
 		} catch (\Exception $e) {
 			dpm($e->getMessage());
-			\Drupal::logger('digitalia_ltp_adapter')->debug("waitForTransferCompletion: " . $e->getMessage());
+			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: " . $e->getMessage());
 			return false;
 		}
+	}
+
+	public function cleanWriteback($entity)
+	{
+		$fields_written_to = false;
+
+		$utils = new Utils();
+
+	        $transfer_field_name = $this->config->get('transfer_field');
+	        $sip_field_name = $this->config->get('sip_field');
+	        $transfer_uuid = $utils->getEntityField($entity, $transfer_field_name);
+	        $sip_uuid = $utils->getEntityField($entity, $sip_field_name);
+	
+	        //dpm("transfer uuid:" . print_r($transfer_uuid, TRUE));
+	        //dpm("sip uuid: " . print_r($sip_uuid, TRUE));
+	
+	        if (strpos($transfer_uuid, "SAVE_") !== false) {
+	              $clean_uuid = substr($transfer_uuid, strlen("SAVE_"));
+	              dpm("clean transfer_uuid: " . $clean_uuid);
+	              $entity->set($transfer_field_name, $clean_uuid);
+	              $fields_written_to = true;
+	        } 
+	
+	        if (strpos($sip_uuid, "SAVE_") !== false) {
+	              $clean_uuid = substr($sip_uuid, strlen("SAVE_"));
+	              dpm("clean sip_uuid: " . $clean_uuid);
+	              $entity->set($sip_field_name, $clean_uuid);
+	              $fields_written_to = true;
+	        } 
+
+		return $fields_written_to;
 	}
 }
 

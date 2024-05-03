@@ -1,6 +1,6 @@
 <?php
 
-namespace Drupal\digitalia_ltp_adapter\Form;
+namespace Drupal\digitalia_ltp_adapter_archivematica\Form;
 
 use Drupal\Core\Form\ConfigFormBase;
 use Drupal\Core\Form\FormStateInterface;
@@ -9,7 +9,7 @@ use Drupal\Core\Form\FormStateInterface;
 /**
  * Defines a form that configures digitalia_ltp_adapter's settings
  */
-class ArchivematicaConfigurationForm extends ConfigFormBase
+class ConfigurationForm extends ConfigFormBase
 {
 	/**
 	 * {@inheritdoc}
@@ -96,12 +96,12 @@ class ArchivematicaConfigurationForm extends ConfigFormBase
 	 */
 	public function submitForm(array &$form, FormStateInterface $form_state)
 	{
-		$this->config('digitalia_ltp_adapter.archivematica_settings')->set('am_host', $form_state->getValue('am_host'))->save();
-		$this->config('digitalia_ltp_adapter.archivematica_settings')->set('api_key_username', $form_state->getValue('api_key_username'))->save();
-		$this->config('digitalia_ltp_adapter.archivematica_settings')->set('api_key_password', $form_state->getValue('api_key_password'))->save();
-		$this->config('digitalia_ltp_adapter.archivematica_settings')->set('base_url', $form_state->getValue('base_url'))->save();
-		$this->config('digitalia_ltp_adapter.archivematica_settings')->set('transfer_field', $form_state->getValue('transfer_field'))->save();
-		$this->config('digitalia_ltp_adapter.archivematica_settings')->set('sip_field', $form_state->getValue('sip_field'))->save();
+		$this->config('digitalia_ltp_adapter_archivematica.settings')->set('am_host', $form_state->getValue('am_host'))->save();
+		$this->config('digitalia_ltp_adapter_archivematica.settings')->set('api_key_username', $form_state->getValue('api_key_username'))->save();
+		$this->config('digitalia_ltp_adapter_archivematica.settings')->set('api_key_password', $form_state->getValue('api_key_password'))->save();
+		$this->config('digitalia_ltp_adapter_archivematica.settings')->set('base_url', $form_state->getValue('base_url'))->save();
+		$this->config('digitalia_ltp_adapter_archivematica.settings')->set('transfer_field', $form_state->getValue('transfer_field'))->save();
+		$this->config('digitalia_ltp_adapter_archivematica.settings')->set('sip_field', $form_state->getValue('sip_field'))->save();
 
 		parent::submitForm($form, $form_state);
 	}
