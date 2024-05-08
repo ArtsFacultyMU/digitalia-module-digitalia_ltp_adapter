@@ -1,0 +1,16 @@
+digitalia_ltp_adapter_arclib.settings:
+  type: config_object
+  label: 'Arclib LTP Adapter config'
+  mapping:
+    arc_host:
+      type: string
+      label: 'Arclib host URL'
+    username:
+      type: string
+      label: 'Arclib username'
+    password:
+      type: string
+      label: 'Arclib password'
+    base_url:
+      type: string
+      label: 'URL of directory where SIPs are temporarily stored'

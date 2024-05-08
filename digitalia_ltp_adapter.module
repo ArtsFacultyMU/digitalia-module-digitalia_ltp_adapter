@@ -6,36 +6,53 @@ use Drupal\digitalia_ltp_adapter\MetadataExtractor;
 use Drupal\digitalia_ltp_adapter\Utils;
 
 
+
+
 /**
- * Transfer published objects to LTP system
+ * Transfer published objects to LTP system. Hook entity_presave can not be used,
+ * some tokens are not available (e. g. [node:vid]).
  *
- * implements hook_entity_presave()
+ * implements hook_entity_insert()
  */
-function digitalia_ltp_adapter_entity_presave(EntityInterface $entity)
+function digitalia_ltp_adapter_entity_insert(EntityInterface $entity)
 {
 
 	$utils = new Utils();
-	//dpm(print_r($utils->getEnabledContentTypes(), true));
 
+	// Stop processing if content type is not enabled
 	if (!$utils->getEnabledContentTypes()[$entity->bundle()]) {
 		return;
 	}
 
+	dpm("Entity update hook");
+	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity insert hook");
+	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
+
 	$extractor = new MetadataExtractor();
-	$system_service_name = $utils->getConfig()->get('enabled_ltp_systems');
-	dpm("enabled system: '" . $system_service_name . "'");
-	$ltp_system = \Drupal::service($system_service_name);
+	$extractor->updateEntity($entity, $extractor::UPDATE_CREATE);
+}
+
+/**
+ * Transfer published objects to LTP system. Hook entity_presave can not be used,
+ * some tokens are not available (e. g. [node:vid]).
+ *
+ * implements hook_entity_update()
+ */
+function digitalia_ltp_adapter_entity_update(EntityInterface $entity)
+{
+
+	$utils = new Utils();
+
+	// Stop processing if content type is not enabled and when writing back information after ingest
+	if (!$utils->getEnabledContentTypes()[$entity->bundle()] || $utils->checkLock($utils->getFullEntityUID($entity))) {
+		return;
+	}
 
 	dpm("Entity update hook");
 	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity update hook");
 	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
 
-
-	// Don't archive when writing back information after ingest
-	if ($ltp_system->cleanWriteback($entity)) {
-		return;
-	}
-
+	$extractor = new MetadataExtractor();
 	$extractor->updateEntity($entity, $extractor::UPDATE_CREATE);
 }
 
@@ -47,7 +64,6 @@ function digitalia_ltp_adapter_entity_presave(EntityInterface $entity)
 function digitalia_ltp_adapter_entity_predelete(EntityInterface $entity)
 {
 	$utils = new Utils();
-	//dpm(print_r($utils->getEnabledContentTypes(), true));
 
 	if (!$utils->getEnabledContentTypes()[$entity->bundle()]) {
 		return;
@@ -56,7 +72,6 @@ function digitalia_ltp_adapter_entity_predelete(EntityInterface $entity)
 	dpm("Entity predelete hook");
 	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity predelete hook");
 	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
-
 
 	$extractor = new MetadataExtractor();
 	$extractor->updateEntity($entity, $extractor::UPDATE_DELETE);

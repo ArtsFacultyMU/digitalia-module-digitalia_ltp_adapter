@@ -1,0 +1,5 @@
+digitalia_ltp_adapter_arclib.config:
+  title: "ARCLib"
+  description: "Configure ARCLib LTP adapter settings"
+  route_name: digitalia_ltp_adapter_arclib.settings
+  parent: digitalia_ltp_adapter.admin_settings

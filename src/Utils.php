@@ -73,7 +73,7 @@ class Utils
 		$this->filesystem->delete($dirpath . "/lock");
 	}
 
-	private function checkLock(String $dirpath)
+	public function checkLock(String $dirpath)
 	{
 		clearstatcache(true, $dirpath . "/lock");
 		return file_exists($dirpath . "/lock");
@@ -213,7 +213,6 @@ class Utils
 	 */
 	public function getEntityField($entity, String $field)
 	{
-		// TODO: decide if language variants of an entity are separate entities
 		dpm("field: " . $field);
 		dpm("entity type: " . $entity->bundle());
 

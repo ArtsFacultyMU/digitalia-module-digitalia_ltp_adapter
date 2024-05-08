@@ -15,6 +15,4 @@ interface LtpSystemInterface
 	public function getName();
 
 	public function setDirectory(String $directory);
-
-	public function cleanWriteback($entity);
 }

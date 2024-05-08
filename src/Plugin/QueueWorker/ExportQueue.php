@@ -4,6 +4,8 @@ namespace Drupal\digitalia_ltp_adapter\Plugin\QueueWorker;
 
 use Drupal\Core\Annotation\QueueWorker;
 use Drupal\Core\Queue\QueueWorkerBase;
+use Drupal\Core\File\FileSystemInterface;
+use Drupal\Core\File\FileSystem;
 use Drupal\digitalia_ltp_adapter\Utils;
 use Drupal\digitalia_ltp_adapter\LtpSystemInterface;
 
@@ -58,14 +60,20 @@ class ExportQueue extends QueueWorkerBase
 			$fields_written_to = false;
 			foreach ($queue_item['fields'] as $id => $field_name) {
 				if ($entity->get($field_name) != "") {
-					$entity->set($field_name, "SAVE_" . $writeback[$id]);
+					$entity->set($field_name, $writeback[$id]);
 					$fields_written_to = true;
 				}
 
 			}
 
 			if ($fields_written_to) {
+				// The directory, which is being locked must already exist
+				$filesystem = \Drupal::service('file_system');
+				$filesystem->prepareDirectory($dirpath, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
+
+				$utils->checkAndLock($dirpath);
 				$entity->save();
+				$utils->removeLock($dirpath);
 			}
 
 

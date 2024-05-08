@@ -1,0 +1,11 @@
+name: LTP adapter for ARCLib
+description: "Enables export of content to ARCLib"
+package: digitalia
+type: module
+core_version_requirement: ^9
+configure: digitalia_ltp_adapter_arclib.settings
+dependencies:
+  - drupal:islandora
+  - drupal:block
+  - drupal:queue_ui
+  - drupal:digitalia_ltp_adapter

@@ -16,7 +16,7 @@ use Drupal\digitalia_ltp_adapter\Utils;
 class MetadataExtractor
 {
 	private $entity_manager;
-	private $languages;
+	private $available_languages;
 	private $utils;
 
 	public $filesystem;
@@ -33,7 +33,7 @@ class MetadataExtractor
 		$this->filesystem = \Drupal::service('file_system');
 		$this->file_repository = \Drupal::service('file.repository');
 		$this->entity_manager = \Drupal::entityTypeManager();
-		$this->languages = \Drupal::languageManager()->getLanguages();
+		$this->available_languages = \Drupal::languageManager()->getLanguages();
 		$this->config = \Drupal::config('digitalia_ltp_adapter.admin_settings');
 		$this->file_uri = ["", ""];
 		$this->dummy_filepaths = array();
@@ -69,7 +69,7 @@ class MetadataExtractor
 		}
 
 		dpm("preparing Sip");
-		$this->prepareMetadata($entity, $this->config->get('site_name') . "_" . $this->utils->getEntityUID($entity), $update_mode);
+		$this->prepareMetadata($entity, $this->utils->getFullEntityUID($entity), $update_mode);
 	}
 
 	/**
@@ -145,7 +145,23 @@ class MetadataExtractor
 			$this->harvestMedia($entity);
 		}
 
-		$this->entityExtractMetadata($entity, $to_encode, $this->file_uri[1], $update_mode);
+		$used_languages = [];
+
+		foreach ($this->available_languages as $lang => $_value) {
+			if ($entity->hasTranslation($lang)) {
+				array_push($used_languages, $lang);
+			}
+		}
+		
+		foreach($used_languages as $lang) {
+			$entity_translated = \Drupal::service('entity.repository')->getTranslationFromContext($entity, $lang);
+			$this->entityExtractMetadata($entity_translated, $to_encode, $this->file_uri[1], $update_mode);
+		}
+
+		if (empty($used_languages)) {
+			$this->entityExtractMetadata($entity, $to_encode, $this->file_uri[1], $update_mode);
+		}
+
 	}
 
 	/**
@@ -165,47 +181,36 @@ class MetadataExtractor
 	 */
 	private function entityExtractMetadata($entity, Array &$to_encode, String $filename, $update_mode)
 	{
-		dpm(print_r($this->dummy_filepaths, TRUE));
-		foreach ($this->languages as $lang => $_value) {
-			dpm("language: " . $lang);
-			if (!$entity->hasTranslation($lang)) {
-				continue;
-			}
-			$entity_translated = \Drupal::service('entity.repository')->getTranslationFromContext($entity, $lang);
+		$deleted = $update_mode == $this::UPDATE_DELETE;
 
-			$deleted = $update_mode == $this::UPDATE_DELETE;
+		$metadata = array(
+			'filename' => $filename,
+			'id' => $entity->id(),
+			'uuid' => $entity->uuid(),
+			'entity_type' => $entity->getEntityTypeId(),
+			'export_language' => $entity->language()->getId(),
+			'status' => strval($this->utils->getEntityField($entity, "status")),
+			'deleted' => strval($deleted),
+		);
 
-			$metadata = array(
-				'filename' => $filename,
-				'id' => $entity->id(),
-				'uuid' => $entity->uuid(),
-				'entity_type' => $entity->getEntityTypeId(),
-				'export_language' => $lang,
-				'status' => strval($this->utils->getEntityField($entity, "status")),
-				'deleted' => strval($deleted),
-			);
+		$entity_bundle = $entity->bundle();
 
-			$entity_bundle = $entity_translated->bundle();
+		$token_service = \Drupal::token();
+		$data = array(
+			$entity->getEntityTypeId() => $entity,
+		);
 
-			// TODO: deal with repeated fields
-			$token_service = \Drupal::token();
-			$data = array(
-				$entity_translated->getEntityTypeId() => $entity_translated,
-			);
+		$settings = array(
+			//'langcode' => $lang,
+			'clear' => true,
+		);
 
-			$settings = array(
-				'langcode' => $lang,
-				'clear' => true,
-			);
-
-			foreach ($this->utils->getContentTypesFields()[$entity_bundle] as $name => $value) {
-				//dpm($token_service->replacePlain($value, $data, $settings));
-				$metadata[$name] = $token_service->replacePlain($value, $data, $settings);
-			}
-
-			array_push($to_encode, $metadata);
+		foreach ($this->utils->getContentTypesFields()[$entity_bundle] as $name => $value) {
+			//dpm($token_service->replacePlain($value, $data, $settings));
+			$metadata[$name] = $token_service->replacePlain($value, $data, $settings);
 		}
-		dpm(print_r($this->dummy_filepaths, TRUE));
+
+		array_push($to_encode, $metadata);
 	}
 
 	/**
@@ -220,57 +225,4 @@ class MetadataExtractor
 		$file = File::load($fid);
 		$this->file_uri = [$file->getFileUri(), $file->getFilename()];
 	}
-
-
-
-	private function writeArclibMetadata(String $id, Array $to_encode, String $metadata_file_path)
-	{
-		$xml = new \XMLWriter();
-		$xml->openUri($metadata_file_path);
-		$xml->startDocument("1.0", "UTF-8");
-
-		$xml->startElementNS("mets", "mets", "http://www.loc.gov/METS/");
-		$xml->writeAttribute("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
-		$xml->writeAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
-		$xml->writeAttribute("xsi:schemaLocation", "http://www.loc.gov/METS/ http://www.loc.gov/standards/mets/version1121/mets.xsd");
-			$xml->startElement("mets:metsHdr");
-			$xml->writeAttribute("CREATEDATE", date("c"));
-			$xml->writeAttribute("LASTMODDATE", date("c"));
-			$xml->endElement();
-
-			$xml->startElement("mets:dmdSec");
-			$xml->writeAttribute("ID", "dmdSec_authorial_id");
-			$xml->writeAttribute("CREATED", date("c"));
-			$xml->writeAttribute("STATUS", "original");
-				$xml->startElement("mets:mdWrap");
-				$xml->writeAttribute("MDTYPE", "OTHER");
-				$xml->writeAttribute("OTHERMDTYPE", "CUSTOM");
-					$xml->startElement("mets:xmlData");
-					# authorial id for ARCLib
-					$xml->writeElement("authorial_id", $id . "_" . time());
-					$xml->endElement();
-				$xml->endElement();
-			$xml->endElement();
-
-			foreach($to_encode as $value => $section) {
-				$xml->startElement("mets:dmdSec");
-				$xml->writeAttribute("ID", "dmdSec_metadata_" . $value);
-				$xml->writeAttribute("CREATED", date("c"));
-				$xml->writeAttribute("STATUS", "original");
-					$xml->startElement("mets:mdWrap");
-					$xml->writeAttribute("MDTYPE", "OTHER");
-					$xml->writeAttribute("OTHERMDTYPE", "CUSTOM");
-						$xml->startElement("mets:xmlData");
-						foreach($section as $name => $value) {
-							$xml->writeElement($name, $value);
-						}
-						$xml->endElement();
-					$xml->endElement();
-				$xml->endElement();
-			}
-
-		$xml->endElement();
-		$xml->endDocument();
-	}
-
 }

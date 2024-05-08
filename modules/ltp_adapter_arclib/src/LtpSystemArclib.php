@@ -1,6 +1,6 @@
 <?php
 
-namespace Drupal\digitalia_ltp_adapter_archivematica;
+namespace Drupal\digitalia_ltp_adapter_arclib;
 
 use Drupal\Core\File\FileSystemInterface;
 use Drupal\Core\File\FileSystem;
@@ -8,7 +8,7 @@ use Drupal\digitalia_ltp_adapter\LtpSystemInterface;
 use Drupal\digitalia_ltp_adapter\Utils;
 use Drupal\digitalia_ltp_adapter\MetadataExtractor;
 
-class LtpSystemArchivematica implements LtpSystemInterface
+class LtpSystemArclib implements LtpSystemInterface
 {
 	private $config;
 	private $host;
@@ -20,10 +20,10 @@ class LtpSystemArchivematica implements LtpSystemInterface
 
 	public function __construct()
 	{
-		$this->config = \Drupal::config('digitalia_ltp_adapter_archivematica.settings');
-		$this->host = $this->config->get('am_host');
-		$this->username = $this->config->get('api_key_username');
-		$this->password = $this->config->get('api_key_password');
+		$this->config = \Drupal::config('digitalia_ltp_adapter_arclib.settings');
+		$this->host = $this->config->get('arc_host');
+		$this->username = $this->config->get('username');
+		$this->password = $this->config->get('password');
 		$this->base_url = $this->config->get('base_url');
 	}
 
@@ -39,7 +39,7 @@ class LtpSystemArchivematica implements LtpSystemInterface
 
 	public function getName()
 	{
-		return "Archivematica";
+		return "ARCLib";
 	}
 
 	public function setDirectory(String $directory)
@@ -49,6 +49,7 @@ class LtpSystemArchivematica implements LtpSystemInterface
 
 	public function writeSIP($entity, Array $metadata, Array $file_uri, Array $dummy_filepaths)
 	{
+		$token = $this->getAuthorizationToken();
 		$utils = new Utils();
 		$dirpath = $this->getBaseUrl() . "/" . $this->getDirectory();
 
@@ -56,7 +57,7 @@ class LtpSystemArchivematica implements LtpSystemInterface
 		$file_repository = \Drupal::service('file.repository');
 
 		if (!$utils->checkAndLock($dirpath)) {
-			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("Couldn't obtain lock for directory '$directory', pre cleanup");
+			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("Couldn't obtain lock for directory '$directory', pre cleanup");
 			return;
 		}
 
@@ -64,7 +65,7 @@ class LtpSystemArchivematica implements LtpSystemInterface
 		$utils->preExportCleanup($entity, $this->getBaseUrl());
 
 		if (!$utils->checkAndLock($dirpath)) {
-			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("Couldn't obtain lock for directory '$directory', post cleanup");
+			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("Couldn't obtain lock for directory '$directory', post cleanup");
 			return;
 		}
 
@@ -87,16 +88,16 @@ class LtpSystemArchivematica implements LtpSystemInterface
 
 		dpm($metadata);
 		dpm($dummy_filenames);
+		dpm($metadata[0]["id"]);
 
 		
-		$encoded = json_encode($metadata, JSON_UNESCAPED_SLASHES);
-
 		try {
 			// write (meta)data
 			$filesystem->prepareDirectory($dir_metadata, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 			$filesystem->prepareDirectory($dir_objects, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 
-			$file_repository->writeData($encoded, $dir_metadata . "/metadata.json" , FileSystemInterface::EXISTS_REPLACE);
+			//$file_repository->writeData($encoded, $dir_metadata . "/metadata.xml" , FileSystemInterface::EXISTS_REPLACE);
+			$this->writeArclibMetadata($metadata[0]["id"], $metadata, $dir_metadata . "/metadata.xml");
 
 			if ($file_uri[0] != "") {
 				$filesystem->copy($file_uri[0], $dir_objects . "/". $file_uri[1], FileSystemInterface::EXISTS_REPLACE);
@@ -112,12 +113,11 @@ class LtpSystemArchivematica implements LtpSystemInterface
 			$utils->removeLock($dirpath);
 
 		} catch (\Exception $e) {
-			\Drupal::logger('digitalia_ltp_adapter_archivematica')->error($e->getMessage());
+			\Drupal::logger('digitalia_ltp_adapter_arclib')->error($e->getMessage());
 			$utils->removeLock($dirpath);
 			return;
 		}
 
-		dpm("ADDING TO QUEUE");
 		$utils->addToQueue(array(
 			'directory' => $this->getDirectory(),
 			'entity_type' => $entity->getEntityTypeId(),
@@ -131,7 +131,7 @@ class LtpSystemArchivematica implements LtpSystemInterface
 
 
 	/**
-	 * Starts ingest in archivematica, logs UUID of transfer
+	 * Starts ingest in arclib, logs UUID of transfer
 	 *
 	 * @param $dirpath
 	 *   Object directory to be ingested
@@ -139,17 +139,17 @@ class LtpSystemArchivematica implements LtpSystemInterface
 	public function startIngest()
 	{
 		dpm("startIngest: start");
-		\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: start");
+		\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("startIngest: start");
 
 		$transfer_uuid = $this->startTransfer($this->getBaseUrl());
 
 		if ($transfer_uuid) {
-			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: transfer with uuid: '$transfer_uuid' started!");
+			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("startIngest: transfer with uuid: '$transfer_uuid' started!");
 			$this->waitForTransferCompletion($transfer_uuid);
 			$sip_uuid = $this->waitForIngestCompletion($transfer_uuid);
 			//dpm("sip_uuid: ". $sip_uuid);
 			//dpm("startIngest: transfer completed!");
-			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: transfer with uuid: '$transfer_uuid' completed!");
+			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("startIngest: transfer with uuid: '$transfer_uuid' completed!");
 			$result = [
 				'transfer_uuid' => $transfer_uuid,
 				'sip_uuid' => $sip_uuid,
@@ -174,7 +174,7 @@ class LtpSystemArchivematica implements LtpSystemInterface
 		$client = \Drupal::httpClient();
 
 		while ($status != "COMPLETE") {
-			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: loop started");
+			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("waitForTransferCompletion: loop started");
 			sleep(1);
 			try {
 				$response = $client->request(
@@ -188,7 +188,7 @@ class LtpSystemArchivematica implements LtpSystemInterface
 				);
 
 				$status = json_decode($response->getBody()->getContents(), TRUE)["status"];
-				\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: status = " . $status);
+				\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("waitForTransferCompletion: status = " . $status);
 
 			} catch (\Exception $e) {
 				dpm($e->getMessage());
@@ -196,11 +196,11 @@ class LtpSystemArchivematica implements LtpSystemInterface
 			}
 
 			if ($status == "FAILED" || $status == "REJECTED" || $status == "USER_INPUT") {
-				\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: status = " . $status);
+				\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("waitForTransferCompletion: status = " . $status);
 			}
 		}
 
-		\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: transfer completed");
+		\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("waitForTransferCompletion: transfer completed");
 
 	}
 
@@ -238,14 +238,14 @@ class LtpSystemArchivematica implements LtpSystemInterface
 	private function startTransfer()
 	{
 		$dirpath = $this->getBaseUrl(). "/" . $this->getDirectory();
-		if (!file_exists($dirpath . "/metadata/metadata.json")) {
-			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("No metadata.json found. Transfer aborted.");
+		if (!file_exists($dirpath . "/metadata/metadata.xml")) {
+			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("No metadata.xml found. Transfer aborted.");
 			return;
 		}
 
 		$utils = new Utils();
 
-		\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("Zipping directory $dirpath");
+		\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("Zipping directory $dirpath");
 		$zip_file = $utils->zipDirectory($this->getBaseUrl(), $this->getDirectory());
 
 		// delete source directory
@@ -256,7 +256,7 @@ class LtpSystemArchivematica implements LtpSystemInterface
 
 		$client = \Drupal::httpClient();
 
-		$path = "/archivematica/drupal/" . $zip_file;
+		$path = "/arclib/drupal/" . $zip_file;
 		$transfer_name = transliterator_transliterate('Any-Latin;Latin-ASCII;', $zip_file . "_" . time());
 
 		$ingest_params = array(
@@ -281,9 +281,94 @@ class LtpSystemArchivematica implements LtpSystemInterface
 			return json_decode($response->getBody()->getContents(), TRUE)["id"];
 		} catch (\Exception $e) {
 			dpm($e->getMessage());
-			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: " . $e->getMessage());
+			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("waitForTransferCompletion: " . $e->getMessage());
 			return false;
 		}
 	}
+
+	private function getAuthorizationToken()
+	{
+		$client = \Drupal::httpClient();
+
+		try {
+			$response = $client->request(
+				"POST",
+				$this->host . "/api/user/login", [
+					"headers" => [
+						"Authorization" => "Basic " . base64_encode($this->username . ":" . $this->password),
+						],
+				]
+			);
+
+			if (!$response->hasHeader("Bearer")) {
+				\Drupal::logger("digitalia_ltp_adapter_arclib")->debug("Failed to get Bearer token.");
+				return "";
+			}
+
+			return $response->getHeader("Bearer")[0];
+
+			
+			// TODO: Should the token be saved to config? Probably not
+			//$config = \Drupal::service('config.factory')->getEditable('digitalia_ltp_adapter_arclib.settings');
+			//$config->set("token", $response->getHeader("Bearer")[0])->save();
+			//dpm($this->config->get("token"));
+		} catch (\Exception $e) {
+			dpm($e->getMessage());
+			\Drupal::logger("digitalia_ltp_adapter_arclib")->debug("getAuthorizationToken: " . $e->getMessage());
+			return "";
+		}
+	}
+
+	private function writeArclibMetadata(String $id, Array $to_encode, String $metadata_file_path)
+	{
+		dpm($metadata_file_path);
+		$xml = new \XMLWriter();
+		$xml->openUri($metadata_file_path);
+		$xml->startDocument("1.0", "UTF-8");
+
+		$xml->startElementNS("mets", "mets", "http://www.loc.gov/METS/");
+		$xml->writeAttribute("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
+		$xml->writeAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+		$xml->writeAttribute("xsi:schemaLocation", "http://www.loc.gov/METS/ http://www.loc.gov/standards/mets/version1121/mets.xsd");
+			$xml->startElement("mets:metsHdr");
+			$xml->writeAttribute("CREATEDATE", date("c"));
+			$xml->writeAttribute("LASTMODDATE", date("c"));
+			$xml->endElement();
+
+			$xml->startElement("mets:dmdSec");
+			$xml->writeAttribute("ID", "dmdSec_authorial_id");
+			$xml->writeAttribute("CREATED", date("c"));
+			$xml->writeAttribute("STATUS", "original");
+				$xml->startElement("mets:mdWrap");
+				$xml->writeAttribute("MDTYPE", "OTHER");
+				$xml->writeAttribute("OTHERMDTYPE", "CUSTOM");
+					$xml->startElement("mets:xmlData");
+					# authorial id for ARCLib
+					$xml->writeElement("authorial_id", $id . "_" . time());
+					$xml->endElement();
+				$xml->endElement();
+			$xml->endElement();
+
+			foreach($to_encode as $value => $section) {
+				$xml->startElement("mets:dmdSec");
+				$xml->writeAttribute("ID", "dmdSec_metadata_" . $value);
+				$xml->writeAttribute("CREATED", date("c"));
+				$xml->writeAttribute("STATUS", "original");
+					$xml->startElement("mets:mdWrap");
+					$xml->writeAttribute("MDTYPE", "OTHER");
+					$xml->writeAttribute("OTHERMDTYPE", "CUSTOM");
+						$xml->startElement("mets:xmlData");
+						foreach($section as $name => $value) {
+							$xml->writeElement($name, $value);
+						}
+						$xml->endElement();
+					$xml->endElement();
+				$xml->endElement();
+			}
+
+		$xml->endElement();
+		$xml->endDocument();
+	}
+
 }
 

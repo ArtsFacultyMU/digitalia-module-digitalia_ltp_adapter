@@ -1,0 +1,7 @@
+digitalia_ltp_adapter_arclib.settings:
+  path: '/admin/config/system/digitalia_ltp_adapter/arclib'
+  defaults:
+    _form: '\Drupal\digitalia_ltp_adapter_arclib\Form\ConfigurationForm'
+    _title: 'ARCLib settings'
+  requirements:
+    _permission: 'administer site configuration'

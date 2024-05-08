@@ -1,0 +1,9 @@
+digitalia_ltp_adapter.config:
+  route_name: digitalia_ltp_adapter.admin_settings
+  base_route: digitalia_ltp_adapter.admin_settings
+  title: Settings
+
+digitalia_ltp_adapter_arclib.config:
+  route_name: digitalia_ltp_adapter_arclib.settings
+  base_route: digitalia_ltp_adapter.admin_settings
+  title: ARCLib

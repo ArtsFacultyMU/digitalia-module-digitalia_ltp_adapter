@@ -1,0 +1,3 @@
+services:
+  digitalia_ltp_adapter.ltp_system.arclib:
+    class: Drupal\digitalia_ltp_adapter_arclib\LtpSystemArclib
