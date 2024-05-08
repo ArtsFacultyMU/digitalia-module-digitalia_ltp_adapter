@@ -14,5 +14,7 @@ interface LtpSystemInterface
 
 	public function getName();
 
+	public function getConfig();
+
 	public function setDirectory(String $directory);
 }

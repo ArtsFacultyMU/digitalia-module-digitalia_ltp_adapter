@@ -64,6 +64,20 @@ class ConfigurationForm extends ConfigFormBase
 			'#default_value' => $config->get('base_url'),
 		];
 
+		$form['workflow'] = [
+			'#type' => 'textarea',
+			'#title' => 'Workflow modification for SIP ingestion',
+			'#description' => '',
+			'#default_value' => $config->get('workflow'),
+		];
+
+		$form['producer_profile_id'] = [
+			'#type' => 'textfield',
+			'#title' => 'Producer profile external ID',
+			'#description' => '',
+			'#default_value' => $config->get('producer_profile_id'),
+		];
+
 		$form['transfer_field'] = [
 			'#type' => 'textfield',
 			'#title' => 'Transfer uuid field',
@@ -80,7 +94,6 @@ class ConfigurationForm extends ConfigFormBase
 
 
 		return parent::buildForm($form, $form_state);
-
 	}
 
 
@@ -93,6 +106,8 @@ class ConfigurationForm extends ConfigFormBase
 		$this->config('digitalia_ltp_adapter_arclib.settings')->set('username', $form_state->getValue('username'))->save();
 		$this->config('digitalia_ltp_adapter_arclib.settings')->set('password', $form_state->getValue('password'))->save();
 		$this->config('digitalia_ltp_adapter_arclib.settings')->set('base_url', $form_state->getValue('base_url'))->save();
+		$this->config('digitalia_ltp_adapter_arclib.settings')->set('workflow', $form_state->getValue('workflow'))->save();
+		$this->config('digitalia_ltp_adapter_arclib.settings')->set('producer_profile_id', $form_state->getValue('producer_profile_id'))->save();
 		$this->config('digitalia_ltp_adapter_arclib.settings')->set('transfer_field', $form_state->getValue('transfer_field'))->save();
 		$this->config('digitalia_ltp_adapter_arclib.settings')->set('sip_field', $form_state->getValue('sip_field'))->save();
 

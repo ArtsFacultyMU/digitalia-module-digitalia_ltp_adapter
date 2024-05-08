@@ -58,12 +58,12 @@ class ExportQueue extends QueueWorkerBase
 			$writeback = $ltp_system->startIngest();
 
 			$fields_written_to = false;
+
 			foreach ($queue_item['fields'] as $id => $field_name) {
 				if ($entity->get($field_name) != "") {
 					$entity->set($field_name, $writeback[$id]);
 					$fields_written_to = true;
 				}
-
 			}
 
 			if ($fields_written_to) {
@@ -71,6 +71,7 @@ class ExportQueue extends QueueWorkerBase
 				$filesystem = \Drupal::service('file_system');
 				$filesystem->prepareDirectory($dirpath, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 
+				// prevent save loop
 				$utils->checkAndLock($dirpath);
 				$entity->save();
 				$utils->removeLock($dirpath);

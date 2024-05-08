@@ -16,6 +16,7 @@ class LtpSystemArclib implements LtpSystemInterface
 	private $password;
 	private $base_url;
 	private $directory;
+	private $token;
 
 
 	public function __construct()
@@ -37,6 +38,11 @@ class LtpSystemArclib implements LtpSystemInterface
 		return $this->directory;
 	}
 
+	public function getConfig()
+	{
+		return $this->config;
+	}
+
 	public function getName()
 	{
 		return "ARCLib";
@@ -45,6 +51,11 @@ class LtpSystemArclib implements LtpSystemInterface
 	public function setDirectory(String $directory)
 	{
 		$this->directory = $directory;
+	}
+
+	private function setToken(String $token)
+	{
+		$this->token = $token;
 	}
 
 	public function writeSIP($entity, Array $metadata, Array $file_uri, Array $dummy_filepaths)
@@ -57,7 +68,7 @@ class LtpSystemArclib implements LtpSystemInterface
 		$file_repository = \Drupal::service('file.repository');
 
 		if (!$utils->checkAndLock($dirpath)) {
-			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("Couldn't obtain lock for directory '$directory', pre cleanup");
+			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("Couldn't obtain lock for directory '$dirpath', pre cleanup");
 			return;
 		}
 
@@ -65,58 +76,41 @@ class LtpSystemArclib implements LtpSystemInterface
 		$utils->preExportCleanup($entity, $this->getBaseUrl());
 
 		if (!$utils->checkAndLock($dirpath)) {
-			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("Couldn't obtain lock for directory '$directory', post cleanup");
+			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("Couldn't obtain lock for directory '$dirpath', post cleanup");
 			return;
 		}
 
 		$dir_metadata = $dirpath . "/metadata";
 		$dir_objects = $dirpath . "/objects";
-		$dummy_filenames = array();
 
 		dpm($metadata);
 
-		// Write correct relative paths to files
+		// Write correct relative path to file
 		foreach ($metadata as &$section) {
-			if ($section["filename"] == "") {
-				dpm("Empty filename found!");
-				$section["filename"] = "objects/" . $section["export_language"] . ".txt";
-				array_push($dummy_filenames, $section["filename"]);
-			} else {
+			if ($section["filename"] != "") {
 				$section["filename"] = "objects/" . $section["filename"];
 			}
 		}
 
 		dpm($metadata);
-		dpm($dummy_filenames);
-		dpm($metadata[0]["id"]);
-
 		
 		try {
 			// write (meta)data
 			$filesystem->prepareDirectory($dir_metadata, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 			$filesystem->prepareDirectory($dir_objects, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
-
-			//$file_repository->writeData($encoded, $dir_metadata . "/metadata.xml" , FileSystemInterface::EXISTS_REPLACE);
-			$this->writeArclibMetadata($metadata[0]["id"], $metadata, $dir_metadata . "/metadata.xml");
+			$this->writeArclibMetadata($entity->id(), $metadata, $dir_metadata . "/metadata.xml");
 
 			if ($file_uri[0] != "") {
 				$filesystem->copy($file_uri[0], $dir_objects . "/". $file_uri[1], FileSystemInterface::EXISTS_REPLACE);
 			}
-
-
-			foreach ($dummy_filenames as $_value => $filepath) {
-				dpm("writing dummy filename");
-				$file_repository->writeData("", $dirpath . "/" . $filepath, FileSystemInterface::EXISTS_REPLACE);
-			}
-
-
-			$utils->removeLock($dirpath);
 
 		} catch (\Exception $e) {
 			\Drupal::logger('digitalia_ltp_adapter_arclib')->error($e->getMessage());
 			$utils->removeLock($dirpath);
 			return;
 		}
+		
+		$utils->removeLock($dirpath);
 
 		$utils->addToQueue(array(
 			'directory' => $this->getDirectory(),
@@ -143,12 +137,15 @@ class LtpSystemArclib implements LtpSystemInterface
 
 		$transfer_uuid = $this->startTransfer($this->getBaseUrl());
 
+		dpm("OBTAINED TRANSFER UUID: " . $transfer_uuid);
+
 		if ($transfer_uuid) {
 			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("startIngest: transfer with uuid: '$transfer_uuid' started!");
-			$this->waitForTransferCompletion($transfer_uuid);
-			$sip_uuid = $this->waitForIngestCompletion($transfer_uuid);
-			//dpm("sip_uuid: ". $sip_uuid);
-			//dpm("startIngest: transfer completed!");
+			$external_id = $this->waitForTransferCompletion($transfer_uuid);
+			dpm("External ID: " . $external_id);
+			$sip_uuid = $this->getSIPUuid($external_id);
+			dpm("sip_uuid: ". $sip_uuid);
+			dpm("startIngest: transfer completed!");
 			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("startIngest: transfer with uuid: '$transfer_uuid' completed!");
 			$result = [
 				'transfer_uuid' => $transfer_uuid,
@@ -168,60 +165,62 @@ class LtpSystemArclib implements LtpSystemInterface
 	 */
 	private function waitForTransferCompletion(String $transfer_uuid)
 	{
-		$status = "";
+
+		$state = "";
 		$response = "";
+		$contents = "";
 
 		$client = \Drupal::httpClient();
 
-		while ($status != "COMPLETE") {
+		while ($state != "PROCESSED") {
 			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("waitForTransferCompletion: loop started");
 			sleep(1);
 			try {
 				$response = $client->request(
 					'GET',
-					$this->host . '/api/transfer/status/' . $transfer_uuid, [
+					$this->host . '/api/batch/' . $transfer_uuid, [
 						'headers' => [
-							'Authorization' => 'ApiKey ' . $this->username . ":" . $this->password,
-							'Host' => "dirk.localnet",
+							'Authorization' => 'Bearer ' . $this->token,
 						]
 					]
 				);
 
-				$status = json_decode($response->getBody()->getContents(), TRUE)["status"];
-				\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("waitForTransferCompletion: status = " . $status);
+				$contents = json_decode($response->getBody()->getContents(), TRUE);
+				$state = $contents["state"];
+				//\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("waitForTransferCompletion: state = '" . $state . "'.");
+
+				if (!($state == "PROCESSING" || $state == "PROCESSED")) {
+					\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("waitForTransferCompletion: state = '" . $state . "'. Aborting");
+					return false;
+				}
 
 			} catch (\Exception $e) {
+				dpm("EXCEPTION");
 				dpm($e->getMessage());
 				return false;
 			}
-
-			if ($status == "FAILED" || $status == "REJECTED" || $status == "USER_INPUT") {
-				\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("waitForTransferCompletion: status = " . $status);
-			}
 		}
 
-		\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("waitForTransferCompletion: transfer completed");
-
+		return $contents["ingestWorkflows"][0]["externalId"];
 	}
 
-	private function waitForIngestCompletion(String $transfer_uuid)
+	private function getSIPUuid(String $external_id)
 	{
-		$sip_uuid = "BACKLOG";
+		$sip_uuid = "";
 		$client = \Drupal::httpClient();
 
-		while ($sip_uuid == "BACKLOG") {
-			$response = $client->request(
-				'GET',
-				$this->host . '/api/transfer/status/' . $transfer_uuid,
-				['headers' => [
-					'Authorization' => 'ApiKey ' . $this->username . ":" . $this->password,
-					'Host' => "dirk.localnet"
-					]
+		$response = $client->request(
+			'GET',
+			$this->host . '/api/ingest_workflow/' . $external_id,
+			['headers' => [
+				'Authorization' => 'Bearer ' . $this->token,
 				]
-			);
+			]
+		);
 
-			$sip_uuid = json_decode($response->getBody()->getContents(), TRUE)["sip_uuid"];
-		}
+		$contents = json_decode($response->getBody()->getContents(), TRUE);
+
+		$sip_uuid = $contents["ingestWorkflow"]["sip"]["id"];
 
 		return $sip_uuid;
 	}
@@ -251,36 +250,66 @@ class LtpSystemArclib implements LtpSystemInterface
 		// delete source directory
 		\Drupal::service('file_system')->deleteRecursive($dirpath);
 
-
 		dpm("Sending request...");
 
 		$client = \Drupal::httpClient();
 
-		$path = "/arclib/drupal/" . $zip_file;
-		$transfer_name = transliterator_transliterate('Any-Latin;Latin-ASCII;', $zip_file . "_" . time());
+		//$path = "/archivematica/drupal/arclib" . $zip_file;
+		//$transfer_name = transliterator_transliterate('Any-Latin;Latin-ASCII;', $zip_file . "_" . time());
 
-		$ingest_params = array(
-			'path' => base64_encode($path),
-			'name' => $transfer_name,
-			'processing_config' => 'automated',
-			'type' => 'zipfile',
-		);
+		$token = $this->getAuthorizationToken();
+		$this->setToken($token);
+
+		if ($token == "") {
+			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("Can't obtain Authorization token. Transfer aborted.");
+			return;
+		}
+
+		dpm($zip_file);
+		
+
+		// get zip hash
+		$hash = hash_file("sha512", $this->getBaseUrl() . "/" . $zip_file);
+		$producer_id = $this->config->get("producer_profile_id");
+		$workflow = $this->config->get("workflow");
 
 		try {
 			$response = $client->request(
 				'POST',
-				$this->host . '/api/v2beta/package', [
+				$this->host . '/api/batch/process_one', [
 					'headers' => [
-						'Authorization' => 'ApiKey ' . $this->username . ":" . $this->password,
-						'ContentType' => 'application/json',
+						'Authorization' => 'Bearer ' . $token,
 						],
-					'body' => json_encode($ingest_params)
+					'multipart' => [
+						[
+							"name" => "sipContent",
+							"contents" => fopen($this->getBaseUrl() . "/" . $zip_file, "r"),
+							"headers" => ["Content-type" => "application/zip"],
+						],
+						[
+							"name" => "workflowConfig",
+							"contents" => $workflow,
+						],
+						[
+							"name" => "hashType",
+							"contents" => "Sha512",
+						],
+						[
+							"name" => "hashValue",
+							"contents" => $hash,
+						],
+						[
+							"name" => "producerProfileExternalId",
+							"contents" => $producer_id,
+						],
+					]
 				]
 			);
 
-			return json_decode($response->getBody()->getContents(), TRUE)["id"];
+			return $response->getBody()->getContents();
+
 		} catch (\Exception $e) {
-			dpm($e->getMessage());
+			dpm($e->getResponse()->getBody()->getContents());
 			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("waitForTransferCompletion: " . $e->getMessage());
 			return false;
 		}
@@ -307,11 +336,6 @@ class LtpSystemArclib implements LtpSystemInterface
 
 			return $response->getHeader("Bearer")[0];
 
-			
-			// TODO: Should the token be saved to config? Probably not
-			//$config = \Drupal::service('config.factory')->getEditable('digitalia_ltp_adapter_arclib.settings');
-			//$config->set("token", $response->getHeader("Bearer")[0])->save();
-			//dpm($this->config->get("token"));
 		} catch (\Exception $e) {
 			dpm($e->getMessage());
 			\Drupal::logger("digitalia_ltp_adapter_arclib")->debug("getAuthorizationToken: " . $e->getMessage());
@@ -343,7 +367,7 @@ class LtpSystemArclib implements LtpSystemInterface
 				$xml->writeAttribute("MDTYPE", "OTHER");
 				$xml->writeAttribute("OTHERMDTYPE", "CUSTOM");
 					$xml->startElement("mets:xmlData");
-					# authorial id for ARCLib
+					# authorial id for ARCLib, time used for testing purposes
 					$xml->writeElement("authorial_id", $id . "_" . time());
 					$xml->endElement();
 				$xml->endElement();

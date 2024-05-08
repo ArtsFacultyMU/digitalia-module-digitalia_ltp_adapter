@@ -46,13 +46,13 @@ class ConfigurationForm extends ConfigFormBase
 
 		$form['api_key_username'] = [
 			'#type' => 'textfield',
-			'#title' => 'Archivematica username',
+			'#title' => 'Username',
 			'#default_value' => $config->get('api_key_username'),
 		];
 
 		$form['api_key_password'] = [
 			'#type' => 'password',
-			'#title' => 'Archivematica password',
+			'#title' => 'Api key',
 			'#description' => '<strong>Must be reentered on every save!</strong>',
 			'#default_value' => $config->get('api_key_password'),
 		];
@@ -62,6 +62,20 @@ class ConfigurationForm extends ConfigFormBase
 			'#title' => 'URL of directory shared with Archivematica',
 			'#description' => 'Please omit trailing slash, e.g. public://archivematica',
 			'#default_value' => $config->get('base_url'),
+		];
+
+		$form['am_shared_path'] = [
+			'#type' => 'textfield',
+			'#title' => 'Path to shared directory on Archivematica',
+			'#description' => 'Please omit trailing slash, e.g. /archivematica',
+			'#default_value' => $config->get('am_shared_path'),
+		];
+
+		$form['processing_config'] = [
+			'#type' => 'textfield',
+			'#title' => 'Processing config to use',
+			'#description' => "e.g. 'automated'",
+			'#default_value' => $config->get('processing_config'),
 		];
 
 		$form['transfer_field'] = [
@@ -78,16 +92,7 @@ class ConfigurationForm extends ConfigFormBase
 			'#default_value' => $config->get('sip_field'),
 		];
 
-
-		$form['enabled'] = [
-			'#type' => 'checkbox',
-			'#title' => 'Enable export to Archivematica',
-			'#default_value' => $config->get('enabled'),
-		];
-
-
 		return parent::buildForm($form, $form_state);
-
 	}
 
 
@@ -100,6 +105,8 @@ class ConfigurationForm extends ConfigFormBase
 		$this->config('digitalia_ltp_adapter_archivematica.settings')->set('api_key_username', $form_state->getValue('api_key_username'))->save();
 		$this->config('digitalia_ltp_adapter_archivematica.settings')->set('api_key_password', $form_state->getValue('api_key_password'))->save();
 		$this->config('digitalia_ltp_adapter_archivematica.settings')->set('base_url', $form_state->getValue('base_url'))->save();
+		$this->config('digitalia_ltp_adapter_archivematica.settings')->set('am_shared_path', $form_state->getValue('am_shared_path'))->save();
+		$this->config('digitalia_ltp_adapter_archivematica.settings')->set('processing_config', $form_state->getValue('processing_config'))->save();
 		$this->config('digitalia_ltp_adapter_archivematica.settings')->set('transfer_field', $form_state->getValue('transfer_field'))->save();
 		$this->config('digitalia_ltp_adapter_archivematica.settings')->set('sip_field', $form_state->getValue('sip_field'))->save();
 

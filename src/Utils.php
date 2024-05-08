@@ -49,7 +49,7 @@ class Utils
 		$this->filesystem->prepareDirectory($dirpath, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 		$total_wait = 0;
 
-		while ($this->checkLock($dirpath)) {
+		while ($this->isLocked($dirpath)) {
 			sleep($interval);
 			$total_wait += $interval;
 			if ($total_wait >= $timeout) {
@@ -73,7 +73,7 @@ class Utils
 		$this->filesystem->delete($dirpath . "/lock");
 	}
 
-	public function checkLock(String $dirpath)
+	public function isLocked(String $dirpath)
 	{
 		clearstatcache(true, $dirpath . "/lock");
 		return file_exists($dirpath . "/lock");

@@ -37,6 +37,11 @@ class LtpSystemArchivematica implements LtpSystemInterface
 		return $this->directory;
 	}
 
+	public function getConfig()
+	{
+		return $this->config;
+	}
+
 	public function getName()
 	{
 		return "Archivematica";
@@ -46,7 +51,6 @@ class LtpSystemArchivematica implements LtpSystemInterface
 	{
 		$this->directory = $directory;
 	}
-
 	public function writeSIP($entity, Array $metadata, Array $file_uri, Array $dummy_filepaths)
 	{
 		$utils = new Utils();
@@ -256,13 +260,13 @@ class LtpSystemArchivematica implements LtpSystemInterface
 
 		$client = \Drupal::httpClient();
 
-		$path = "/archivematica/drupal/" . $zip_file;
+		$path = $this->getConfig()->get("am_shared_path") . "/" . $zip_file;
 		$transfer_name = transliterator_transliterate('Any-Latin;Latin-ASCII;', $zip_file . "_" . time());
 
 		$ingest_params = array(
 			'path' => base64_encode($path),
 			'name' => $transfer_name,
-			'processing_config' => 'automated',
+			'processing_config' => $this->getConfig()->get("processing_config"),
 			'type' => 'zipfile',
 		);
 
