@@ -58,7 +58,7 @@ class LtpSystemArclib implements LtpSystemInterface
 		$this->token = $token;
 	}
 
-	public function writeSIP($entity, Array $metadata, Array $file_uri, Array $dummy_filepaths)
+	public function writeSIP($entity, Array $metadata, Array $file_uri)
 	{
 		$token = $this->getAuthorizationToken();
 		$utils = new Utils();
@@ -83,8 +83,6 @@ class LtpSystemArclib implements LtpSystemInterface
 		$dir_metadata = $dirpath . "/metadata";
 		$dir_objects = $dirpath . "/objects";
 
-		dpm($metadata);
-
 		// Write correct relative path to file
 		foreach ($metadata as &$section) {
 			if ($section["filename"] != "") {
@@ -92,13 +90,11 @@ class LtpSystemArclib implements LtpSystemInterface
 			}
 		}
 
-		dpm($metadata);
-		
 		try {
 			// write (meta)data
 			$filesystem->prepareDirectory($dir_metadata, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 			$filesystem->prepareDirectory($dir_objects, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
-			$this->writeArclibMetadata($entity->id(), $metadata, $dir_metadata . "/metadata.xml");
+			$this->writeArclibMetadata($utils->getFullEntityUID($entity), $metadata, $dir_metadata . "/metadata.xml");
 
 			if ($file_uri[0] != "") {
 				$filesystem->copy($file_uri[0], $dir_objects . "/". $file_uri[1], FileSystemInterface::EXISTS_REPLACE);
@@ -132,27 +128,21 @@ class LtpSystemArclib implements LtpSystemInterface
 	 */
 	public function startIngest()
 	{
-		dpm("startIngest: start");
 		\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("startIngest: start");
 
 		$transfer_uuid = $this->startTransfer($this->getBaseUrl());
 
-		dpm("OBTAINED TRANSFER UUID: " . $transfer_uuid);
-
 		if ($transfer_uuid) {
 			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("startIngest: transfer with uuid: '$transfer_uuid' started!");
 			$external_id = $this->waitForTransferCompletion($transfer_uuid);
-			dpm("External ID: " . $external_id);
 			$sip_uuid = $this->getSIPUuid($external_id);
-			dpm("sip_uuid: ". $sip_uuid);
-			dpm("startIngest: transfer completed!");
+
 			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("startIngest: transfer with uuid: '$transfer_uuid' completed!");
 			$result = [
 				'transfer_uuid' => $transfer_uuid,
 				'sip_uuid' => $sip_uuid,
 			];
 
-			dpm(print_r($result, TRUE));
 			return $result;
 		}
 	}
@@ -195,8 +185,6 @@ class LtpSystemArclib implements LtpSystemInterface
 				}
 
 			} catch (\Exception $e) {
-				dpm("EXCEPTION");
-				dpm($e->getMessage());
 				return false;
 			}
 		}
@@ -245,12 +233,10 @@ class LtpSystemArclib implements LtpSystemInterface
 		$utils = new Utils();
 
 		\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("Zipping directory $dirpath");
-		$zip_file = $utils->zipDirectory($this->getBaseUrl(), $this->getDirectory());
+		$zip_file = $utils->zipDirectory($this->getBaseUrl(), $this->getDirectory(), true);
 
 		// delete source directory
 		\Drupal::service('file_system')->deleteRecursive($dirpath);
-
-		dpm("Sending request...");
 
 		$client = \Drupal::httpClient();
 
@@ -264,9 +250,6 @@ class LtpSystemArclib implements LtpSystemInterface
 			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("Can't obtain Authorization token. Transfer aborted.");
 			return;
 		}
-
-		dpm($zip_file);
-		
 
 		// get zip hash
 		$hash = hash_file("sha512", $this->getBaseUrl() . "/" . $zip_file);
@@ -309,7 +292,6 @@ class LtpSystemArclib implements LtpSystemInterface
 			return $response->getBody()->getContents();
 
 		} catch (\Exception $e) {
-			dpm($e->getResponse()->getBody()->getContents());
 			\Drupal::logger('digitalia_ltp_adapter_arclib')->debug("waitForTransferCompletion: " . $e->getMessage());
 			return false;
 		}
@@ -337,7 +319,6 @@ class LtpSystemArclib implements LtpSystemInterface
 			return $response->getHeader("Bearer")[0];
 
 		} catch (\Exception $e) {
-			dpm($e->getMessage());
 			\Drupal::logger("digitalia_ltp_adapter_arclib")->debug("getAuthorizationToken: " . $e->getMessage());
 			return "";
 		}
@@ -345,7 +326,6 @@ class LtpSystemArclib implements LtpSystemInterface
 
 	private function writeArclibMetadata(String $id, Array $to_encode, String $metadata_file_path)
 	{
-		dpm($metadata_file_path);
 		$xml = new \XMLWriter();
 		$xml->openUri($metadata_file_path);
 		$xml->startDocument("1.0", "UTF-8");
@@ -367,7 +347,8 @@ class LtpSystemArclib implements LtpSystemInterface
 				$xml->writeAttribute("MDTYPE", "OTHER");
 				$xml->writeAttribute("OTHERMDTYPE", "CUSTOM");
 					$xml->startElement("mets:xmlData");
-					# authorial id for ARCLib, time used for testing purposes
+					// authorial id for ARCLib, time used for testing purposes.
+					// SipMerger fails on same authorial_id even if duplicateSip is removed from workflow
 					$xml->writeElement("authorial_id", $id . "_" . time());
 					$xml->endElement();
 				$xml->endElement();

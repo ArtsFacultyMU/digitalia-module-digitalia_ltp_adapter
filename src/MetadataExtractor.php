@@ -8,6 +8,7 @@ use Drupal\media\Entity\Media;
 use Drupal\file\Entity\File;
 use Drupal\Core\File\FileSystemInterface;
 use Drupal\Core\File\FileSystem;
+use Drupal\Core\Entity\EntityInterface;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Drupal\digitalia_ltp_adapter\Utils;
@@ -47,35 +48,31 @@ class MetadataExtractor
 
 
 	/**
-	 * Tries to create/update entity and transfer it into Archivematica
+	 * Tries to create/update entity and obtain metadata
 	 *
-	 * @param $entity
+	 * @param EntityInterface $entity
 	 *   Drupal entity
 	 *
 	 * @param $update_mode
 	 *   Indicator of deletion
 	 */
-	public function updateEntity($entity, $update_mode)
+	public function updateEntity(EntityInterface $entity, $update_mode)
 	{
-		dpm("preparing Sip before checks");
-
-		if (!$this->getConfig()->get('auto_generate_switch')) {
+		if (!$this->getConfig()->get('enable_export')) {
 			return;
 		}
 
-		dpm("status check: " . $this->utils->getEntityField($entity, "status"));
-		if (!$this->utils->getEntityField($entity, "status")) {
+		if ($this->getConfig()->get("only_published") && !$this->utils->getEntityField($entity, "status")) {
 			return;
 		}
 
-		dpm("preparing Sip");
 		$this->prepareMetadata($entity, $this->utils->getFullEntityUID($entity), $update_mode);
 	}
 
 	/**
-	 * Prepares necessary directories, starts metadata harvest and writes metadata
+	 * Prepares necessary directories, starts metadata collection and writes metadata
 	 *
-	 * @param $entity
+	 * @param EntityInterface $entity
 	 *   Entity which is to be ingested into archivematica
 	 *
 	 * @param String $directory
@@ -84,24 +81,18 @@ class MetadataExtractor
 	 * @param $update_mode
 	 *   Indicator of deletion
 	 */
-	private function prepareMetadata($entity, String $directory, $update_mode)
+	private function prepareMetadata(EntityInterface $entity, String $directory, $update_mode)
 	{
-		dpm("Preparing data...");
-
-		\Drupal::logger('digitalia_ltp_adapter')->debug("Preparing sip");
-
-		//foreach ($this->config as $conf) {
-		//	dpm(print_r($conf, TRUE));
-		//}
-
 		$system_service_name = $this->config->get('enabled_ltp_systems');
-		dpm("enabled system: '" . $system_service_name . "'");
-		$ltp_system = \Drupal::service($system_service_name);
 
-		if (is_null($ltp_system)) {
-			dpm("Please enable at least one LTP system.");
+		try {
+			$ltp_system = \Drupal::service($system_service_name);
+
+		} catch (Exception $e) {
+			\Drupal::logger('digitalia_ltp_adapter')->error("'$system_service_name' is not a valid LTP system. Please choose enabled LTP system.");
 			return;
 		}
+
 
 		$ltp_system->setDirectory($directory);
 
@@ -112,33 +103,27 @@ class MetadataExtractor
 
 		$this->harvestMetadata($entity, $to_encode, $dirpath, $update_mode);
 
-		dpm(json_encode($to_encode, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
-
 		$ltp_system->writeSIP($entity, $to_encode, $this->file_uri, $this->dummy_filepaths);
 
 	}
 
 	/**
-	 * Appends metadata of all descendants of a entity
+	 * Obtains metadata from all language versions of an entity
 	 *
-	 * @param object $entity
+	 * @param EntityInterface $entity
 	 *   A drupal entity
-	 *
-	 * @param String $base_path
-	 *   Base path of objects from $dir_url
 	 *
 	 * @param Array $to_encode
 	 *   For appending metadata
 	 *
 	 * @param String $dir_url
-	 *   URL of object directory, which is ingested to Archivematica
+	 *   URL of object directory
 	 *
 	 * @param $update_mode
-	 *   Indicator of deletion
+	 *   Delete flag
 	 */
-	private function harvestMetadata($entity, Array &$to_encode, String $dir_url, $update_mode)
+	private function harvestMetadata(EntityInterface $entity, Array &$to_encode, String $dir_url, $update_mode)
 	{
-		dpm("Entity type id: " . $entity->getEntityTypeId());
 		$type = $entity->getEntityTypeId();
 
 		if ($type == "media") {
@@ -167,7 +152,7 @@ class MetadataExtractor
 	/**
 	 * Extracts metadata from single entity
 	 *
-	 * @param $entity
+	 * @param EntityInterface $entity
 	 *   Entity from which metadata is extracted
 	 *
 	 * @param Array $to_encode
@@ -179,7 +164,7 @@ class MetadataExtractor
 	 * @param $update_mode
 	 *   Indicator of deletion
 	 */
-	private function entityExtractMetadata($entity, Array &$to_encode, String $filename, $update_mode)
+	private function entityExtractMetadata(EntityInterface $entity, Array &$to_encode, String $filename, $update_mode)
 	{
 		$deleted = $update_mode == $this::UPDATE_DELETE;
 
@@ -201,12 +186,10 @@ class MetadataExtractor
 		);
 
 		$settings = array(
-			//'langcode' => $lang,
 			'clear' => true,
 		);
 
 		foreach ($this->utils->getContentTypesFields()[$entity_bundle] as $name => $value) {
-			//dpm($token_service->replacePlain($value, $data, $settings));
 			$metadata[$name] = $token_service->replacePlain($value, $data, $settings);
 		}
 
@@ -214,10 +197,10 @@ class MetadataExtractor
 	}
 
 	/**
-	 * Harvests (meta)data from media entities
+	 * Obtains media filepath and name
 	 *
 	 * @param $medium
-	 *   Media entity to be harvested
+	 *   Media entity
 	 */
 	private function harvestMedia($medium)
 	{

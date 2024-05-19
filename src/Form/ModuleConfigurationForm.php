@@ -39,23 +39,23 @@ class ModuleConfigurationForm extends ConfigFormBase
 
 		$form['site_name'] = [
 			'#type' => 'textfield',
-			'#title' => 'Site name',
-			'#description' => 'Used as prefix for object ingest. Node with id \'42\' and site name \'my-islandora\' will be ingested to Archivematica as \'my-islandora_42\'',
+			'#title' => $this->t('Site name'),
+			'#description' => $this->t('Used as prefix for object ingest.'),
 			'#default_value' => $config->get('site_name'),
 		];
 
 		$form['field_configuration'] = [
 			'#type' => 'textarea',
 			'#size' => '60',
-			'#title' => 'List of content types and fields for export',
-			'#description' => 'Use tokens for values: \'content_type::metadata_name::[node:token]\', e.g. \'page::dcterms.title::[node:title]\' or \'page::title::[node:title]\'',
+			'#title' => $this->t('Exported metadata'),
+			'#description' => $this->t('Use tokens: "content_type::metadata_name::[node:token]", e.g. "page::dcterms.title::[node:title]" or "page::title::[node:title]"'),
 			'#default_value' => $config->get('field_configuration'),
 		];
 
-		$ltp_systems = $this->getServices('ltp_system');
+		$ltp_systems = $this->getAvailableLTPSystems();
 		$form['enabled_ltp_systems'] = [
 			'#type' => 'radios',
-			'#title' => 'Enabled LTP systems',
+			'#title' => $this->t('LTP system'),
 			'#options' => $ltp_systems,
 			'#default_value' => $config->get('enabled_ltp_systems'),
 			'#attributes' => [
@@ -63,19 +63,21 @@ class ModuleConfigurationForm extends ConfigFormBase
 			],
 		];
 
-		//dpm(print_r($form['enabled_ltp_systems'], TRUE));
-
-		$form['auto_generate_switch'] = [
+		$form['only_published'] = [
 			'#type' => 'checkbox',
-			'#title' => 'Export on save',
-			'#description' => 'When enabled, exports only when the entity is published (with media when media AND parent is published)',
-			'#default_value' => $config->get('auto_generate_switch'),
+			'#title' => $this->t('Only published entities'),
+			'#description' => '',
+			'#default_value' => $config->get('only_published'),
 		];
 
-
+		$form['enable_export'] = [
+			'#type' => 'checkbox',
+			'#title' => $this->t('Enable export'),
+			'#description' => '',
+			'#default_value' => $config->get('enable_export'),
+		];
 
 		return parent::buildForm($form, $form_state);
-
 	}
 
 
@@ -85,28 +87,30 @@ class ModuleConfigurationForm extends ConfigFormBase
 	public function submitForm(array &$form, FormStateInterface $form_state)
 	{
 		dpm(print_r($form_state->getValue('enabled_ltp_systems'), TRUE));
-		$this->config('digitalia_ltp_adapter.admin_settings')->set('site_name', $form_state->getValue('site_name'))->save();
-		$this->config('digitalia_ltp_adapter.admin_settings')->set('field_configuration', $form_state->getValue('field_configuration'))->save();
-
-		//$this->config('digitalia_ltp_adapter.admin_settings')->set('enabled_ltp_systems', array_values($form_state->getValue('enabled_ltp_systems')))->save();
-		$this->config('digitalia_ltp_adapter.admin_settings')->set('enabled_ltp_systems', $form_state->getValue('enabled_ltp_systems'))->save();
-
-		$this->config('digitalia_ltp_adapter.admin_settings')->set('auto_generate_switch', $form_state->getValue('auto_generate_switch'))->save();
+		$this->config('digitalia_ltp_adapter.admin_settings')->set('site_name', $form_state->getValue('site_name'));
+		$this->config('digitalia_ltp_adapter.admin_settings')->set('field_configuration', $form_state->getValue('field_configuration'));
+		$this->config('digitalia_ltp_adapter.admin_settings')->set('enabled_ltp_systems', $form_state->getValue('enabled_ltp_systems'));
+		$this->config('digitalia_ltp_adapter.admin_settings')->set('only_published', $form_state->getValue('only_published'));
+		$this->config('digitalia_ltp_adapter.admin_settings')->set('enable_export', $form_state->getValue('enable_export'))->save();
 
 		parent::submitForm($form, $form_state);
 	}
 
-	public function getServices($type)
+	/**
+	 * Obtains available LTP systems
+	 */
+	public function getAvailableLTPSystems()
 	{
 		$services = \Drupal::getContainer()->getServiceIds();
-		$services = preg_grep("/\.$type\./", $services);
-		$options = [];
+		$services = preg_grep("/\.ltp_system\./", $services);
+		$ltp_systems = [];
+
 		foreach ($services as $service_id) {
 			$service = \Drupal::service($service_id);
-			$options[$service_id] = $service->getName();
+			$ltp_systems[$service_id] = $service->getName();
 		}
 
-		return $options;
+		return $ltp_systems;
 	}
 
 }

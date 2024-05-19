@@ -1,12 +1,8 @@
 <?php
 
 use Drupal\Core\Entity\EntityInterface;
-use Drupal\node\Entity\Node;
 use Drupal\digitalia_ltp_adapter\MetadataExtractor;
 use Drupal\digitalia_ltp_adapter\Utils;
-
-
-
 
 /**
  * Transfer published objects to LTP system. Hook entity_presave can not be used,
@@ -23,10 +19,6 @@ function digitalia_ltp_adapter_entity_insert(EntityInterface $entity)
 	if (!$utils->getEnabledContentTypes()[$entity->bundle()]) {
 		return;
 	}
-
-	dpm("Entity update hook");
-	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity insert hook");
-	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
 
 	$extractor = new MetadataExtractor();
 	$extractor->updateEntity($entity, $extractor::UPDATE_CREATE);
@@ -45,7 +37,6 @@ function digitalia_ltp_adapter_entity_update(EntityInterface $entity)
 
 	// Stop processing if content type is not enabled
 	if (!$utils->getEnabledContentTypes()[$entity->bundle()]) {
-		//dpm("ABORTING UPDATE, ENTITY NOT ENABLED");
 		return;
 	}
 
@@ -53,15 +44,8 @@ function digitalia_ltp_adapter_entity_update(EntityInterface $entity)
 
 	// Stop processing when writing back information after ingest
 	if ($utils->isLocked($ltp_system->getConfig()->get("base_url") . "/" . $utils->getFullEntityUID($entity))) {
-		//dpm("ABORTING UPDATE, directory '" . $utils->getFullEntityUID($entity) . "' is locked");
 		return;
 	}
-
-
-
-	dpm("Entity update hook");
-	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity update hook");
-	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
 
 	$extractor = new MetadataExtractor();
 	$extractor->updateEntity($entity, $extractor::UPDATE_CREATE);
@@ -76,22 +60,11 @@ function digitalia_ltp_adapter_entity_predelete(EntityInterface $entity)
 {
 	$utils = new Utils();
 
+	// Stop processing if content type is not enabled
 	if (!$utils->getEnabledContentTypes()[$entity->bundle()]) {
 		return;
 	}
 
-	dpm("Entity predelete hook");
-	\Drupal::logger('digitalia_ltp_adapter')->debug("Entity predelete hook");
-	\Drupal::logger('digitalia_ltp_adapter')->debug("Bundle: " . $entity->bundle());
-
 	$extractor = new MetadataExtractor();
 	$extractor->updateEntity($entity, $extractor::UPDATE_DELETE);
-}
-
-/**
- * implements hook_cron()
- */
-function digitalia_ltp_adapter_cron()
-{
-	dpm("Cron hook");
 }

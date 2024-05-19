@@ -48,6 +48,7 @@ class ExportQueue extends QueueWorkerBase
 
 		if (!$utils->checkAndLock($dirpath, 2, 120)) {
 			\Drupal::logger('digitalia_ltp_adapter')->debug("Couldn't obtain lock for directory '" . $dirpath . "', aborting.");
+			$utils->removeFromQueue($queue_item["directory"]);
 			return;
 		}
 
@@ -82,9 +83,9 @@ class ExportQueue extends QueueWorkerBase
 			// unlocking only on failure, source directory is deleted otherwise
 			\Drupal::logger('digitalia_ltp_adapter')->error($e->getMessage());
 			$utils->removeLock($dirpath);
+			$utils->removeFromQueue($queue_item["directory"]);
 			return;
 		}
-
-		\Drupal::logger('digitalia_ltp_adapter')->debug("Item from queue processed");
+		\Drupal::logger('digitalia_ltp_adapter')->debug("Item '" . $queue_item["directory"] . "' processed.");
 	}
 }

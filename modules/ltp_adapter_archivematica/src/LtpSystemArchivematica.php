@@ -51,7 +51,7 @@ class LtpSystemArchivematica implements LtpSystemInterface
 	{
 		$this->directory = $directory;
 	}
-	public function writeSIP($entity, Array $metadata, Array $file_uri, Array $dummy_filepaths)
+	public function writeSIP($entity, Array $metadata, Array $file_uri)
 	{
 		$utils = new Utils();
 		$dirpath = $this->getBaseUrl() . "/" . $this->getDirectory();
@@ -76,12 +76,9 @@ class LtpSystemArchivematica implements LtpSystemInterface
 		$dir_objects = $dirpath . "/objects";
 		$dummy_filenames = array();
 
-		dpm($metadata);
-
 		// Write correct relative paths to files
 		foreach ($metadata as &$section) {
 			if ($section["filename"] == "") {
-				dpm("Empty filename found!");
 				$section["filename"] = "objects/" . $section["export_language"] . ".txt";
 				array_push($dummy_filenames, $section["filename"]);
 			} else {
@@ -89,10 +86,6 @@ class LtpSystemArchivematica implements LtpSystemInterface
 			}
 		}
 
-		dpm($metadata);
-		dpm($dummy_filenames);
-
-		
 		$encoded = json_encode($metadata, JSON_UNESCAPED_SLASHES);
 
 		try {
@@ -108,7 +101,6 @@ class LtpSystemArchivematica implements LtpSystemInterface
 
 
 			foreach ($dummy_filenames as $_value => $filepath) {
-				dpm("writing dummy filename");
 				$file_repository->writeData("", $dirpath . "/" . $filepath, FileSystemInterface::EXISTS_REPLACE);
 			}
 
@@ -121,7 +113,6 @@ class LtpSystemArchivematica implements LtpSystemInterface
 			return;
 		}
 
-		dpm("ADDING TO QUEUE");
 		$utils->addToQueue(array(
 			'directory' => $this->getDirectory(),
 			'entity_type' => $entity->getEntityTypeId(),
@@ -136,30 +127,28 @@ class LtpSystemArchivematica implements LtpSystemInterface
 
 	/**
 	 * Starts ingest in archivematica, logs UUID of transfer
-	 *
-	 * @param $dirpath
-	 *   Object directory to be ingested
 	 */
 	public function startIngest()
 	{
-		dpm("startIngest: start");
-		\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: start");
+		//\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: start");
 
 		$transfer_uuid = $this->startTransfer($this->getBaseUrl());
 
 		if ($transfer_uuid) {
-			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: transfer with uuid: '$transfer_uuid' started!");
-			$this->waitForTransferCompletion($transfer_uuid);
-			$sip_uuid = $this->waitForIngestCompletion($transfer_uuid);
-			//dpm("sip_uuid: ". $sip_uuid);
-			//dpm("startIngest: transfer completed!");
-			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: transfer with uuid: '$transfer_uuid' completed!");
+			//\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: transfer with uuid: '$transfer_uuid' started!");
+			$sip_uuid = $this->waitForTransferCompletion($transfer_uuid);
+
+			if (!$this->waitForIngestCompletion($sip_uuid)) {
+				\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("Ingest with SIP uuid: '$sip_uuid' failed!");
+				return;
+			}
+
+			//\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: transfer with uuid: '$transfer_uuid' completed!");
 			$result = [
 				'transfer_uuid' => $transfer_uuid,
 				'sip_uuid' => $sip_uuid,
 			];
 
-			dpm(print_r($result, TRUE));
 			return $result;
 		}
 	}
@@ -191,43 +180,64 @@ class LtpSystemArchivematica implements LtpSystemInterface
 					]
 				);
 
-				$status = json_decode($response->getBody()->getContents(), TRUE)["status"];
-				\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: status = " . $status);
+				$body = json_decode($response->getBody()->getContents(), TRUE);
+				$status = $body["status"];
+				//\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: status = " . $status);
+
+				if ($status == "COMPLETE") {
+					return $body["sip_uuid"];
+				}
 
 			} catch (\Exception $e) {
-				dpm($e->getMessage());
 				return false;
 			}
 
 			if ($status == "FAILED" || $status == "REJECTED" || $status == "USER_INPUT") {
-				\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: status = " . $status);
+				\Drupal::logger('digitalia_ltp_adapter_archivematica')->error("waitForTransferCompletion: status = " . $status);
+				return false;
 			}
 		}
 
-		\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: transfer completed");
-
+		//\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: transfer completed");
 	}
 
-	private function waitForIngestCompletion(String $transfer_uuid)
+	/**
+	 * Blocks until a ingest is finished, logs unsuccessful ingests
+	 *
+	 * @param String $sip_uuid
+	 *   uuid to wait for
+	 */
+	private function waitForIngestCompletion(String $sip_uuid)
 	{
-		$sip_uuid = "BACKLOG";
+		$status = "";
 		$client = \Drupal::httpClient();
 
-		while ($sip_uuid == "BACKLOG") {
-			$response = $client->request(
-				'GET',
-				$this->host . '/api/transfer/status/' . $transfer_uuid,
-				['headers' => [
-					'Authorization' => 'ApiKey ' . $this->username . ":" . $this->password,
-					'Host' => "dirk.localnet"
+		while ($status != "COMPLETE") {
+			sleep(1);
+			try {
+				$response = $client->request(
+					'GET',
+					$this->host . '/api/ingest/status/' . $sip_uuid,
+					['headers' => [
+						'Authorization' => 'ApiKey ' . $this->username . ":" . $this->password,
+						]
 					]
-				]
-			);
+				);
 
-			$sip_uuid = json_decode($response->getBody()->getContents(), TRUE)["sip_uuid"];
+				$status = json_decode($response->getBody()->getContents(), TRUE)["status"];
+				\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForIngestCompletion: status = " . $status);
+
+			} catch (\Exception $e) {
+				return false;
+			}
+
+			if ($status == "FAILED" || $status == "REJECTED" || $status == "USER_INPUT") {
+				\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForIngestCompletion: status = " . $status);
+				return false;
+			}
 		}
 
-		return $sip_uuid;
+		return true;
 	}
 
 	/**
@@ -250,13 +260,10 @@ class LtpSystemArchivematica implements LtpSystemInterface
 		$utils = new Utils();
 
 		\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("Zipping directory $dirpath");
-		$zip_file = $utils->zipDirectory($this->getBaseUrl(), $this->getDirectory());
+		$zip_file = $utils->zipDirectory($this->getBaseUrl(), $this->getDirectory(), false);
 
 		// delete source directory
 		\Drupal::service('file_system')->deleteRecursive($dirpath);
-
-
-		dpm("Sending request...");
 
 		$client = \Drupal::httpClient();
 
@@ -265,7 +272,7 @@ class LtpSystemArchivematica implements LtpSystemInterface
 
 		$ingest_params = array(
 			'path' => base64_encode($path),
-			'name' => $transfer_name,
+			'name' => $this->getDirectory(),
 			'processing_config' => $this->getConfig()->get("processing_config"),
 			'type' => 'zipfile',
 		);
@@ -284,8 +291,7 @@ class LtpSystemArchivematica implements LtpSystemInterface
 
 			return json_decode($response->getBody()->getContents(), TRUE)["id"];
 		} catch (\Exception $e) {
-			dpm($e->getMessage());
-			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: " . $e->getMessage());
+			\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startTransfer(): " . $e->getMessage());
 			return false;
 		}
 	}

@@ -4,7 +4,13 @@ digitalia_ltp_adapter.admin_settings:
   mapping:
     test_field:
       type: text
-      label: 'Test field'
-    base_url:
-      type: string
-      label: 'URL of directory shared with Archivematica'
+    site_name:
+      type: textfield
+    field_configuration:
+      type: textarea
+    enabled_ltp_systems:
+      type: radios
+    only_published:
+      type: checkbox
+    enable_export:
+      type: checkbox

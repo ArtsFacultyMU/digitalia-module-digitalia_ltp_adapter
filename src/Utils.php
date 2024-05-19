@@ -8,6 +8,7 @@ use Drupal\media\Entity\Media;
 use Drupal\file\Entity\File;
 use Drupal\Core\File\FileSystemInterface;
 use Drupal\Core\File\FileSystem;
+use Drupal\Core\Entity\EntityInterface;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 
@@ -27,8 +28,28 @@ class Utils
 		$this->content_types_fields = $this->parseFieldConfiguration();
 	}
 
+	public function getConfig()
+	{
+		return $this->config;
+	}
+
 	/**
-	 * Sadly NOT ATOMIC
+	 * Gets list of all content types which are to be archived
+	 *
+	 * @return array
+	 *   Array of content types
+	 */
+	public function getEnabledContentTypes()
+	{
+		$content_types = array();
+		foreach ($this->getContentTypesFields() as $type => $_value) {
+			$content_types[$type] = 1;
+		}
+
+		return $content_types;
+	}
+
+	/**
 	 * Tries to lock directory. Blocks for at most $timeout seconds
 	 *
 	 * @param String $dirpath
@@ -49,7 +70,9 @@ class Utils
 		$this->filesystem->prepareDirectory($dirpath, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 		$total_wait = 0;
 
-		while ($this->isLocked($dirpath)) {
+		
+		//while ($this->isLocked($dirpath)) {
+		while (!fopen($this->filesystem->realpath($dirpath . "/lock"), "x")) {
 			sleep($interval);
 			$total_wait += $interval;
 			if ($total_wait >= $timeout) {
@@ -57,8 +80,6 @@ class Utils
 			}
 		}
 
-		$this->addLock($dirpath);
-		//\Drupal::logger('digitalia_ltp_adapter')->debug("checkAndLock: end");
 		return true;
 	}
 
@@ -73,28 +94,31 @@ class Utils
 		$this->filesystem->delete($dirpath . "/lock");
 	}
 
+	/**
+	 * Checks for lock on directory
+	 *
+	 * @param String $dirpath
+	 *   Path to directory
+	 *
+	 * @return bool
+	 *   True if locked
+	 */
 	public function isLocked(String $dirpath)
 	{
 		clearstatcache(true, $dirpath . "/lock");
 		return file_exists($dirpath . "/lock");
 	}
 
-	// TODO: do it properly, not with EXISTS_REPLACE, we need to go deeper?
-	private function addLock(String $dirpath)
-	{
-		$this->file_repository->writeData("", $dirpath . "/lock", FileSystemInterface::EXISTS_REPLACE);
-	}
-
 	/**
 	 * Creates filename/directory friendly uid for entities
 	 *
-	 * @param $entity
+	 * @param EntityInterface $entity
 	 *   Entity for which to generate uid
 	 *
 	 * @return
 	 *   String uid
 	 */
-	public function getEntityUID($entity)
+	public function getEntityUID(EntityInterface $entity)
 	{
 		switch ($entity->getEntityTypeId()) {
 		case "node":
@@ -124,13 +148,13 @@ class Utils
 	/**
 	 * Gets full entity uid for export directory structure (base object directory)
 	 *
-	 * @param $entity
+	 * @param EntityInterface $entity
 	 *   Entity for which to generate full uid
 	 *
 	 * @return
 	 *   String full uid
 	 */
-	public function getFullEntityUID($entity)
+	public function getFullEntityUID(EntityInterface $entity)
 	{
 		return $this->config->get('site_name') . "_" . $this->getEntityUID($entity);
 
@@ -155,7 +179,7 @@ class Utils
 	 * Adds a directory to ingest queue
 	 *
 	 * @param Array $params
-	 *   Array with name, entity type and entity uuid
+	 *   Array with parameters
 	 */
 	public function addToQueue(Array $params)
 	{
@@ -170,7 +194,7 @@ class Utils
 	}
 
 	/**
-	 * Removes directory from ingest queue
+	 * Removes directory from export queue
 	 *
 	 * @param String $directory
 	 *   Name of directory to remove from ingest queue
@@ -180,13 +204,10 @@ class Utils
 	 */
 	public function removeFromQueue(String $directory, bool $all = false)
 	{
-		\Drupal::logger('digitalia_ltp_adapter')->debug("removeFromQueue: start");
 		$queue = \Drupal::service('queue')->get('digitalia_ltp_adapter_export_queue');
 		$items = array();
 		while ($item = $queue->claimItem()) {
-			\Drupal::logger('digitalia_ltp_adapter')->debug("removeFromQueue: direcotry = " . $directory . "; item = " . $item->data);
 			if ($item->data["directory"] == $directory) {
-				\Drupal::logger('digitalia_ltp_adapter')->debug("removeFromQueue: item found");
 				$queue->deleteItem($item);
 
 				if (!$all) {
@@ -200,8 +221,6 @@ class Utils
 		foreach ($items as $item) {
 			$queue->releaseItem($item);
 		}
-
-		\Drupal::logger('digitalia_ltp_adapter')->debug("removeFromQueue: end");
 	}
 
 	/**
@@ -213,13 +232,9 @@ class Utils
 	 */
 	public function getEntityField($entity, String $field)
 	{
-		dpm("field: " . $field);
-		dpm("entity type: " . $entity->bundle());
-
 		try {
 			$value = $entity->get($field);
 		} catch (\Exception $e) {
-			dpm($e->getMessage());
 			return;
 		}
 
@@ -253,27 +268,39 @@ class Utils
 	 *   Directory to be archived
 	 *
 	 */
-	public function zipDirectory(String $base_url, String $directory)
+	public function zipDirectory(String $base_url, String $directory, bool $include_root_dir)
 	{
 		$zip_file = $directory . ".zip";
-		$filesystem = \Drupal::service('file_system');
 
 		// zip file must exist
-		fopen($filesystem->realpath($base_url . "/" . $zip_file), "w");
+		fopen($this->filesystem->realpath($base_url . "/" . $zip_file), "w");
 		$zip = \Drupal::service('plugin.manager.archiver')->getInstance(['filepath' => $base_url . "/" . $zip_file])->getArchive();
 
 		$files = new \RecursiveIteratorIterator(
-			new \RecursiveDirectoryIterator($base_url . "/" . $directory),
+			new \RecursiveDirectoryIterator($base_url . "/" . $directory . "/"),
 			\RecursiveIteratorIterator::LEAVES_ONLY
 		);
 
-		// Add root directory, otherwise ARCLib fails to validate zip (possibly resolved by #143)
-		$zip->addEmptyDir($directory);
 
+		if ($include_root_dir) {
+			// Add root directory, otherwise ARCLib fails to validate zip (possibly resolved by #143)
+			$zip->addEmptyDir($directory);
+			$this->addFilesToZip($zip, $files, $base_url . "/");
+		} else {
+			$this->addFilesToZip($zip, $files, $base_url . "/" . $directory . "/");
+		}
+
+		$zip->close();
+
+		return $directory . ".zip";
+	}
+
+	private function addFilesToZip($zip, $files, String $base_path)
+	{
 		foreach ($files as $file) {
 			if (!$file->isDir()) {
-				$file_path = $filesystem->realpath($file);
-				$relative_path = substr($file_path, strlen($filesystem->realpath($base_url . "/")) + 1);
+				$file_path = $this->filesystem->realpath($file);
+				$relative_path = substr($file_path, strlen($this->filesystem->realpath($base_path)) + 1);
 
 				// Don't want to archive lock file
 				if ($relative_path == $directory . "/lock") {
@@ -284,32 +311,8 @@ class Utils
 			}
 		}
 
-		$zip->close();
-
-		return $directory . ".zip";
 	}
 
-	/**
-	 * Gets list of all content types which are to be archived
-	 *
-	 * @return array
-	 *   Array of content types
-	 */
-	public function getEnabledContentTypes()
-	{
-		$content_types = array();
-		foreach ($this->getContentTypesFields() as $type => $_value) {
-			$content_types[$type] = 1;
-		}
-		dpm("getting content types: " . print_r($content_types, TRUE));
-
-		return $content_types;
-	}
-
-	public function getConfig()
-	{
-		return $this->config;
-	}
 
 	/**
 	 * Parses content type/field configuration
@@ -319,7 +322,7 @@ class Utils
 	 */
 	private function parseFieldConfiguration()
 	{
-		$field_config = $this->config->get('field_configuration');
+		$field_config = $this->getConfig()->get('field_configuration');
 		$lines = explode("\n", $field_config);
 
 		$parsed= array();
