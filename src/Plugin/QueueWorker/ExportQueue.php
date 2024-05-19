@@ -15,7 +15,7 @@ use Drupal\digitalia_ltp_adapter\LtpSystemInterface;
  * @QueueWorker(
  *   id = "digitalia_ltp_adapter_export_queue",
  *   title = @Translation("Export Queue"),
- *   cron = {"time" = 86400}
+ *   cron = {"time" = 3600}
  *   )
  */
 class ExportQueue extends QueueWorkerBase
@@ -53,10 +53,16 @@ class ExportQueue extends QueueWorkerBase
 		}
 
 		try {
+
+			$writeback = $ltp_system->startIngest();
+
 			$entity = \Drupal::entityTypeManager()->getStorage($queue_item['entity_type'])->loadByProperties(['uuid' => $queue_item['uuid']]);
 			$entity = reset($entity);
 
-			$writeback = $ltp_system->startIngest();
+			// Export of deleted entity, can't write back information
+			if (!$entity) {
+				return;
+			}
 
 			$fields_written_to = false;
 
@@ -78,14 +84,14 @@ class ExportQueue extends QueueWorkerBase
 				$utils->removeLock($dirpath);
 			}
 
-
 		} catch (\Exception $e) {
 			// unlocking only on failure, source directory is deleted otherwise
 			\Drupal::logger('digitalia_ltp_adapter')->error($e->getMessage());
 			$utils->removeLock($dirpath);
 			$utils->removeFromQueue($queue_item["directory"]);
 			return;
+		} finally {
+			\Drupal::logger('digitalia_ltp_adapter')->debug("Item '" . $queue_item["directory"] . "' processed.");
 		}
-		\Drupal::logger('digitalia_ltp_adapter')->debug("Item '" . $queue_item["directory"] . "' processed.");
 	}
 }

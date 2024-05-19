@@ -19,12 +19,11 @@ class MetadataExtractor
 	private $entity_manager;
 	private $available_languages;
 	private $utils;
-
-	public $filesystem;
-	public $file_repository;
-	public $config;
-	public $file_uri;
-	public $dummy_filepaths;
+	private $filesystem;
+	private $file_repository;
+	private $config;
+	private $file_uri;
+	private $dummy_filepaths;
 
 	const UPDATE_CREATE = 10;
 	const UPDATE_DELETE = 11;

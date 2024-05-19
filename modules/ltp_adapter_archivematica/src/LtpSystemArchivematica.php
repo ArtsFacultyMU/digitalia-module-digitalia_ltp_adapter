@@ -51,6 +51,10 @@ class LtpSystemArchivematica implements LtpSystemInterface
 	{
 		$this->directory = $directory;
 	}
+
+	/**
+	 * {@inheritdoc}
+	 */
 	public function writeSIP($entity, Array $metadata, Array $file_uri)
 	{
 		$utils = new Utils();
@@ -76,20 +80,15 @@ class LtpSystemArchivematica implements LtpSystemInterface
 		$dir_objects = $dirpath . "/objects";
 		$dummy_filenames = array();
 
-		// Write correct relative paths to files
+		// Add dummy filenames
 		foreach ($metadata as &$section) {
-			if ($section["filename"] == "") {
-				$section["filename"] = "objects/" . $section["export_language"] . ".txt";
-				array_push($dummy_filenames, $section["filename"]);
-			} else {
-				$section["filename"] = "objects/" . $section["filename"];
-			}
+			$section["filename"] = "objects/" . $section["export_language"] . ".txt";
+			array_push($dummy_filenames, $section["filename"]);
 		}
 
 		$encoded = json_encode($metadata, JSON_UNESCAPED_SLASHES);
 
 		try {
-			// write (meta)data
 			$filesystem->prepareDirectory($dir_metadata, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 			$filesystem->prepareDirectory($dir_objects, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 
@@ -99,19 +98,17 @@ class LtpSystemArchivematica implements LtpSystemInterface
 				$filesystem->copy($file_uri[0], $dir_objects . "/". $file_uri[1], FileSystemInterface::EXISTS_REPLACE);
 			}
 
-
 			foreach ($dummy_filenames as $_value => $filepath) {
 				$file_repository->writeData("", $dirpath . "/" . $filepath, FileSystemInterface::EXISTS_REPLACE);
 			}
-
-
-			$utils->removeLock($dirpath);
 
 		} catch (\Exception $e) {
 			\Drupal::logger('digitalia_ltp_adapter_archivematica')->error($e->getMessage());
 			$utils->removeLock($dirpath);
 			return;
 		}
+
+		$utils->removeLock($dirpath);
 
 		$utils->addToQueue(array(
 			'directory' => $this->getDirectory(),
@@ -124,18 +121,14 @@ class LtpSystemArchivematica implements LtpSystemInterface
 		));
 	}
 
-
 	/**
-	 * Starts ingest in archivematica, logs UUID of transfer
+	 * {@inheritdoc}
 	 */
 	public function startIngest()
 	{
-		//\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: start");
-
 		$transfer_uuid = $this->startTransfer($this->getBaseUrl());
 
 		if ($transfer_uuid) {
-			//\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: transfer with uuid: '$transfer_uuid' started!");
 			$sip_uuid = $this->waitForTransferCompletion($transfer_uuid);
 
 			if (!$this->waitForIngestCompletion($sip_uuid)) {
@@ -143,7 +136,6 @@ class LtpSystemArchivematica implements LtpSystemInterface
 				return;
 			}
 
-			//\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("startIngest: transfer with uuid: '$transfer_uuid' completed!");
 			$result = [
 				'transfer_uuid' => $transfer_uuid,
 				'sip_uuid' => $sip_uuid,
@@ -182,7 +174,6 @@ class LtpSystemArchivematica implements LtpSystemInterface
 
 				$body = json_decode($response->getBody()->getContents(), TRUE);
 				$status = $body["status"];
-				//\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: status = " . $status);
 
 				if ($status == "COMPLETE") {
 					return $body["sip_uuid"];
@@ -197,8 +188,6 @@ class LtpSystemArchivematica implements LtpSystemInterface
 				return false;
 			}
 		}
-
-		//\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("waitForTransferCompletion: transfer completed");
 	}
 
 	/**
@@ -259,7 +248,6 @@ class LtpSystemArchivematica implements LtpSystemInterface
 
 		$utils = new Utils();
 
-		\Drupal::logger('digitalia_ltp_adapter_archivematica')->debug("Zipping directory $dirpath");
 		$zip_file = $utils->zipDirectory($this->getBaseUrl(), $this->getDirectory(), false);
 
 		// delete source directory
@@ -268,7 +256,6 @@ class LtpSystemArchivematica implements LtpSystemInterface
 		$client = \Drupal::httpClient();
 
 		$path = $this->getConfig()->get("am_shared_path") . "/" . $zip_file;
-		$transfer_name = transliterator_transliterate('Any-Latin;Latin-ASCII;', $zip_file . "_" . time());
 
 		$ingest_params = array(
 			'path' => base64_encode($path),

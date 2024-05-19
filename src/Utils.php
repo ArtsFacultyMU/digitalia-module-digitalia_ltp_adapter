@@ -33,6 +33,17 @@ class Utils
 		return $this->config;
 	}
 
+	public function getEnabledLtpSystem()
+	{
+		return $this->config->get["enabled_ltp_systems"];
+	}
+
+	public function getContentTypesFields()
+	{
+		return $this->content_types_fields;
+	}
+
+
 	/**
 	 * Gets list of all content types which are to be archived
 	 *
@@ -137,7 +148,7 @@ class Utils
 			$prefix = "uid";
 			break;
 		default:
-			$prefix = "default";
+			$prefix = "id";
 			break;
 		}
 
@@ -227,8 +238,13 @@ class Utils
 	 * Gets entity field in default language
 	 *
 	 * @param $entity
-	 *  Drupal entity
+	 *   Drupal entity
 	 *
+	 * @param String $field
+	 *   Name of field
+	 *
+	 * @return
+	 *   Value of field
 	 */
 	public function getEntityField($entity, String $field)
 	{
@@ -238,26 +254,14 @@ class Utils
 			return;
 		}
 
-		// Use default language for processing
-		//$langcode = \Drupal::DefaultLanguageItem->getDefaultLangcode($entity);
-		//$langcode = "en";
-		//$translated = $entity->getTranslation($langcode);
-		//$translated = \Drupal::service('entity.repository')->getTranslationFromContext($entity, $langcode);
-		// Untranslated entities store bool, translated entities are more complex
-
 		$value = $entity->get($field)->getValue();
 
+		// Untranslated entities store values directly, translated entities are more complex
 		if (is_array($value)) {
 			return $entity->get($field)->getValue()[0]["value"];
 		}
 
 		return $value;
-		//return $translated->get($field)->getValue();
-	}
-
-	public function getEnabledLtpSystem()
-	{
-		return $this->config->get["enabled_ltp_systems"];
 	}
 
 	/**
@@ -267,6 +271,8 @@ class Utils
 	 * @param $directory
 	 *   Directory to be archived
 	 *
+	 * @return String
+	 *   Name of created archive
 	 */
 	public function zipDirectory(String $base_url, String $directory, bool $include_root_dir)
 	{
@@ -285,9 +291,9 @@ class Utils
 		if ($include_root_dir) {
 			// Add root directory, otherwise ARCLib fails to validate zip (possibly resolved by #143)
 			$zip->addEmptyDir($directory);
-			$this->addFilesToZip($zip, $files, $base_url . "/");
+			$this->addFilesToZip($zip, $files, $base_url . "/", $directory . "/lock");
 		} else {
-			$this->addFilesToZip($zip, $files, $base_url . "/" . $directory . "/");
+			$this->addFilesToZip($zip, $files, $base_url . "/" . $directory . "/", "lock");
 		}
 
 		$zip->close();
@@ -295,24 +301,39 @@ class Utils
 		return $directory . ".zip";
 	}
 
-	private function addFilesToZip($zip, $files, String $base_path)
+	/**
+	 * Adds files to zip object, removes lock from archive
+	 *
+	 * @param $zip
+	 *   Zip object
+	 *
+	 * @param Array $files
+	 *   List of files to archive
+	 *
+	 * @param String $base_path
+	 *   Base directory from which relative paths inside archive are taken
+	 *
+	 * @param String $lock_relative_path
+	 *   Relative path to lock file
+	 */
+	private function addFilesToZip($zip, $files, String $base_path, String $lock_relative_path)
 	{
+		$real_base_path = $this->filesystem->realpath($base_path);
+
 		foreach ($files as $file) {
 			if (!$file->isDir()) {
 				$file_path = $this->filesystem->realpath($file);
-				$relative_path = substr($file_path, strlen($this->filesystem->realpath($base_path)) + 1);
+				$relative_path = substr($file_path, strlen($real_base_path) + 1);
 
 				// Don't want to archive lock file
-				if ($relative_path == $directory . "/lock") {
+				if ($relative_path == $lock_relative_path) {
 					continue;
 				}
 
 				$zip->addFile($file_path, $relative_path);
 			}
 		}
-
 	}
-
 
 	/**
 	 * Parses content type/field configuration
@@ -333,10 +354,4 @@ class Utils
 
 		return $parsed;
 	}
-
-	public function getContentTypesFields()
-	{
-		return $this->content_types_fields;
-	}
-
 }
