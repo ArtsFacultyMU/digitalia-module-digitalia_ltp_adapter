@@ -3,14 +3,18 @@ digitalia_ltp_adapter_archivematica.settings:
   label: 'Archivematica LTP Adapter config'
   mapping:
     am_host:
-      type: string
-      label: 'Archivematica host URL'
+      type: textfield
     api_key_username:
-      type: string
-      label: 'Archivematica username'
+      type: textfield
     api_key_password:
-      type: string
-      label: 'Archivematica password'
+      type: password
     base_url:
-      type: string
-      label: 'URL of directory shared with Archivematica'
+      type: textfield
+    am_shared_path:
+      type: textfield
+    processing_config:
+      type: textfield
+    transfer_field:
+      type: textfield
+    sip_field:
+      type: textfield
