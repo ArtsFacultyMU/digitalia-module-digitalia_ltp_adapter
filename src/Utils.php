@@ -77,12 +77,10 @@ class Utils
 	 */
 	public function checkAndLock(String $dirpath, int $interval = 2, int $timeout = 20)
 	{
-		//\Drupal::logger('digitalia_ltp_adapter')->debug("checkAndLock: start");
 		$this->filesystem->prepareDirectory($dirpath, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 		$total_wait = 0;
 
 		
-		//while ($this->isLocked($dirpath)) {
 		while (!fopen($this->filesystem->realpath($dirpath . "/lock"), "x")) {
 			sleep($interval);
 			$total_wait += $interval;

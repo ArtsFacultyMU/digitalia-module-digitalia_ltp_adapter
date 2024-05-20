@@ -339,8 +339,10 @@ class LtpSystemArclib implements LtpSystemInterface
 				$xml->writeAttribute("OTHERMDTYPE", "CUSTOM");
 					$xml->startElement("mets:xmlData");
 					// authorial id for ARCLib, time used for testing purposes.
-					// SipMerger fails on same authorial_id even if duplicateSip is removed from workflow
+					// SipMerger fails on same authorial_id even if duplicateSip is removed from workflow,
+					// Discussed in issue #146 https://github.com/LIBCAS/ARCLib/issues/146
 					$xml->writeElement("authorial_id", $id . "_" . time());
+					//$xml->writeElement("authorial_id", $id);
 					$xml->endElement();
 				$xml->endElement();
 			$xml->endElement();
