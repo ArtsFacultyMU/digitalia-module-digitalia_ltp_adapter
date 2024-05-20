@@ -39,7 +39,7 @@ class ConfigurationForm extends ConfigFormBase
 
 		$form['am_host'] = [
 			'#type' => 'textfield',
-			'#title' => $this->t('Archivematica host URL'),
+			'#title' => $this->t('Host URL'),
 			'#description' => $this->t('Please omit trailing slash, e.g. https://archivematica.example:8080'),
 			'#default_value' => $config->get('am_host'),
 		];
@@ -52,7 +52,7 @@ class ConfigurationForm extends ConfigFormBase
 
 		$form['api_key_password'] = [
 			'#type' => 'password',
-			'#title' => $this->t('Api key'),
+			'#title' => $this->t('API key'),
 			'#description' => $this->t('<strong>Must be reentered on every save!</strong>'),
 			'#default_value' => $config->get('api_key_password'),
 		];
