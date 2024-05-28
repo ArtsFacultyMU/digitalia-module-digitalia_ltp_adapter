@@ -2,7 +2,7 @@ name: LTP adapter
 description: "Enables export of content to Archivematica"
 package: digitalia
 type: module
-core_version_requirement: ^9
+core_version_requirement: ^9 || ^10
 configure: digitalia_ltp_adapter.admin_sesttings
 dependencies:
   - drupal:islandora
